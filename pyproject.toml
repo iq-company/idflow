@@ -1,0 +1,12 @@
+[project]
+name = "idflow"
+version = "0.1.0"
+dependencies = ["typer>=0.12", "pydantic>=2", "PyYAML>=6"]
+
+[project.scripts]
+idflow = "idflow.app:run"
+
+# for plugins:
+# [project.entry-points."idflow.commands"]
+# myplugin = "idflow_myplugin:app"
+
