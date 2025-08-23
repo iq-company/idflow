@@ -57,17 +57,17 @@ mkdir myproject
 cd myproject
 
 # global installation:
-#   pipx install mdflow
+#   pipx install idflow
 #
 # or in venv:
 python -m venv .venv && source .venv/bin/activate
-pip install mdflow
+pip install idflow
 ```
 
 In the selected target directory run:
 
 ```bash
-mdflow init
+idflow init
 ```
 
 This will generate some files, like:
@@ -92,7 +92,9 @@ Refer to **`Configuration`** for further Details.
 
 ## CLI
 
-### Adding new Documents
+### Document Control
+
+#### Adding new Documents
 
 Command: `idflow add doc [--status inbox]` generates a new Document in status "inbox" (by default) and returns the generated `uuid`.
 
@@ -127,7 +129,7 @@ idflow add doc \
   --file-data '{"note":"original upload"}' # opt
 ```
 
-### Listing Documents
+#### Listing Documents
 
 ```bash
 # only uuids (default)
@@ -141,15 +143,15 @@ idflow doc list \
   --col id --col title --col priority --col doc-keys
 ```
 
-### Manipulating Documents
+#### Manipulating Documents
 
-#### State Changes
+##### State Changes
 
 ```bash
 idflow doc set-status uuid active
 ```
 
-#### Update Values
+##### Update Values
 
 ```bash
 echo "new body" | idflow doc modify uuid \
@@ -159,22 +161,179 @@ echo "new body" | idflow doc modify uuid \
   --add-file attachment=./upload.pdf
 ```
 
-### Deleting Documents
+#### Deleting Documents
 
+```bash
+# drop a single doc
+idflow doc drop uuid
 
+# drop all docs
+idflow doc drop-all --force
+```
+
+### Change and Extend Functionalities
+
+As described later, it's possible to extend or change existing behaviour (like Flows, Tasks, Pipelines, ...).
+The Key is to add own folders/files into the correct folders with the correct names.
+To change existing functionalities, the files, which should be extended can be added in the own project, which will
+cause to use them instead of the original ones.
+
+To copy a bunch (or all) of the delivered functionality the following commands can be used.
+
+#### Copy extendables to the own project for changes
+If just the full functionality should be copied, use `--all`:
+
+```bash
+idflow vendor copy --all
+```
+
+While copying you'll get prompted for each file, which already exists in your local project to decide if its copy should be overwritten or skipped.
+
+If you want to extend only specific features, call:
+```bash
+idflow vendor copy
+```
+
+This will list the possible directories (containing features), to choose, which ones should be copied / extend.
+All files of the directory will be copied. You can discard single files, if you want to rely on the original behaviour for
+those files instead.
+
+---
+
+## Architecture
+
+In general the easiest definition of what happens with idflow is:
+
+```
+# Adding new Documents
+Gather Documents       → State Inbox
+Add Documents manually → State Inbox
+
+# Processing Documents
+Docs Inbox → Reach `Stages` (like Research, Enrich, Generate, Publish) → State Done
+
+# Stages
+A Stage defines a State with a bunch of settings like requirements, start criteria or results.
+
+Requirements can be other Stages, or Property Pattern of the Document (e.g. *tags* should be present and contain "invoice").
+
+The Stage Presence of a Document has its own Status. A Stage Definition may provide additional States.
+
+Each Document may pass many Stages in its lifecycle. The lifecycle itself is not limited by any Stage (with the only exception of a "block" exception in any Stage; this will cause the doc being moved into Status "blocked" to stop any further Processings).
+A Documents' Status is typically changed to done from another application layer, or maybe from a scheduled task, which observes age and completed Stages.
+
+```
+
+```
+┌─────────┐    ┌─────────────┐    ┌─────────┐    ┌──────────┐    ┌─────────┐
+│ Gather  │───▶│ Documents   │───▶│ Enrich  │───▶│ Generate │───▶│Publish  │
+│         │    │    In       │    │         │    │          │    │         │
+└─────────┘    └─────────────┘    └─────────┘    └──────────┘    └─────────┘
+```
+
+**Flow Overview (example, may be configured completely different):**
+- **Gather**: Collect documents from various sources (RSS, YouTube, manual input)
+- **Enrich**: Add metadata, deduplicate, rank, and enhance content
+- **Generate**: Create new content pieces (blog posts, social media, newsletters)
+- **Publish**: Distribute content through various channels (APIs, databases, etc.)
 
 ---
 
 ## Configuration
 
+---
+
+## Stages
+
+A Stage represents a collection of tasks belonging to a document for separate task orchestration in one structured unit.
+
+Each Stage may be invoked in different ways:
+- When one of the `trigger` conditions gets true
+- It can be requested from a dependent Stage, which was entered
+- It can be manually entered (by CLI or from a Task)
+
+### Stage Definition
+
+A Stage Definition consists of a name with several settings.
+
+`**stage-name.yml**`
+```yaml
+name: stage-name
+# The following states are the core States for all Stage Definitions, but may be extended for each Definition if set.
+states:
+  - scheduled
+  - started
+  - completed
+  - blocked
+  - cancelled
+# Defines doc conditions/criteria for automated triggers to entry, process, or leave the Stage for a Document
+trigger:
+  to_status:
+    started:
+      property_list_item_added:
+        tag: invoice
+      stages:
+        other_stage_name:
+          status: started
+  timer: # TODO: e.g. for Collectors, which could rely on "generic Scheduler Document". To invoke some Stages each interval.
+# Defines requirements/prerequisites, which have to be met before this stage can be entered
+# If another Stage needs to have been started before this Stage may be run, this other Stage
+# can be *scheduled* or *started* by scheduling this Stage: If a Stage cannot be started due
+# to unsolved requirements, it is entered in Status *scheduled*. It's *started* if, or as soon
+# as the requirements are fulfilled.
+# If a Stage was already *started* (fulfilled requirements), but wasn't processed until *completed*
+# or *blocked*, was reached, its Status will be changed to *cancelled*, if the requirements doesn't
+# fit anymore.
+requirements:
+  file_presence:
+    key: upload_file
+    count: 1
+    count_operator: '>='
+  stages:
+    other_stage_name:
+      status: started
+# By default each stage may only be entered one single time for each Document.
+# If there are use-cases for multiple calls, the ability of multi calls can be set here.
+# When set to true, each run will be created in a single folder (with a uuid) within the Stage:
+multiple_callable: false
+```
+
+## Tasks and Task Categories
+
+Tasks are the exposed python routines, which will be called/invoked from several stages.
+
+Task Categories just give a semtantic grouping structure and keep its tasks as sub directories.
+
+They will be delivered as core tasks or in further plugins. Tasks also may provide templates and other data, which can be overwritten in specific contents, if the files are located at the same place in the project structure.
+
+The file structure will be the same in the project, in the core or in plugins:
+
+```
+task_categories/          # Doc-ID
+├─ collectors/            # the Task Category `Collectors`
+├─ researchers/           # the Task Category `Researchers`
+├─ enrichers/             # the Task Category `Enrichers`
+│  └─ seo                 # The Enricher Task "seo"
+|     |─ __init__.py      # The task will be expected to be exposed in a generic way
+│     |─ seo_task.py      # Sample of task implementation
+|     └─ jinja_templates/ # Sample folder for templates
+│        └─ result.md.j2  # Main Result template file
+├─ generators/            # the Task Category `Generators`
+│  └─ blog                # Blog Post Generator Task
+|     |─ __init__.py      # The task will be expected to be exposed in a generic way
+│     ├─ task.py          # Main Result file
+│     └─ utils.py         # Additional file-reference to `newsletter.md`, if this was generated as a result from the Blog Post Generator
+```
 
 ---
 
-## Events and Pipelines
+## Pipelines
+
+Decide if a Stage is considered to be a pipeline, or if the pipeline connects several stage results.
 
 ---
 
-## Anatomy of a single Document ID
+## Anatomy of a single Document
 
 Each Document keeps its own folder within the `data/{status}/{uuid}` directory.
 
@@ -218,6 +377,27 @@ Further properties may be created dynamically from the Manual Adder (CLI), Gathe
 | list | list, dict, value | Is a list which may contain other lists, dicts or values as records |
 | dict | list, dict, value | Is a dict, which expects string typed keys and values of the types list, dict, value |
 
+### Document Stages
+
+Each document may run through separate `Stages` due to several Pipelines and Flows, which might generate different further Documents / Results.
+These are called `Stages`.
+Those `Stages` will be located in the stages/ fs in the Document's directory. The Task Results are grouped within the Document Folder in further sub directories:
+
+FS within `data/STATUS/`:
+```
+uuid/                             # Doc-ID
+├─ doc.md                         # main parameters of the doc
+└─ stages/                        # Stages will be located below this folder
+   └─ research_for_blog_post/     # Stage Name
+      └─ uuid/                    # uuid for the stage instance
+         |─ stage.md              # main parameters of the current stage instance
+         └─ researchers/          # Tasks from Category `Researchers`
+            |─ deep-research-mit/ # task 1, scheduled in this stage
+            |  |─ result.md       # a result definition similiar to doc.md Anatomy
+            |  └─ uuid1           # Generated results as file-reference in result.md
+            └─ deep-research-gpt/ # task 2
+               └─ ...
+```
 
 ---
 
@@ -225,6 +405,8 @@ Further properties may be created dynamically from the Manual Adder (CLI), Gathe
 
 - **SQLite Index** - After each Document Update its Properties should be added into a local sqlite db for an efficient access to data and relationships.
 - Get it **installable on Edge Devices** for Win, Mac, Linux to manage and discover data locally, with a GUI and without Docker knowledge (PyInstaller, cx_Freeze, Nuitka)
+- Enable Docs to detach file references with s3 instead of keeping them locally in the bundle
+- Add ORM Adapters to store docs in DBMS systems instead of the fs
 
 ---
 

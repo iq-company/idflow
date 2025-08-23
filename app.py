@@ -7,6 +7,7 @@ from idflow.cli.doc import app as doc_app
 
 app = typer.Typer(add_completion=False)
 app.add_typer(doc_app, name="doc")
+app.add_typer(vendor_app, name="vendor")
 
 for ep in md.entry_points(group="idflow.commands"):
     subapp = ep.load()

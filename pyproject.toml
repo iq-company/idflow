@@ -6,6 +6,14 @@ dependencies = ["typer>=0.12", "pydantic>=2", "PyYAML>=6"]
 [project.scripts]
 idflow = "idflow.app:run"
 
+# TODO: clarify what it does exactly, and prevent "vendor/" folder
+[tool.setuptools.packages.find]
+include = ["idflow*"]
+
+[tool.setuptools.package-data]
+idflow = ["vendor/**/*"]
+# TODO: end of clarification
+
 # for plugins:
 # [project.entry-points."idflow.commands"]
 # myplugin = "idflow_myplugin:app"
