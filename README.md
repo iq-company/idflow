@@ -60,7 +60,7 @@ cd myproject
 #   pipx install idflow
 #
 # or in venv:
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install idflow
 ```
 
