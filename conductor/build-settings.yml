@@ -23,6 +23,7 @@ check: auto # auto|local|remote
 # tag: ${readFile("container-version.txt")}-${currentChecksum()}
 # tag: ${env("REL_TAG","dev")}-${gitShortSha()}
 # tag: ${depChecksum("builder-ui")}-${currentChecksum()}
+# tag: ${depChecksum8("builder-ui")}-${currentChecksum8()}
 
 targets:
   conductor-src:

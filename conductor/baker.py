@@ -91,6 +91,7 @@ def short_hash(h: str, n: int) -> str:
 
 # ---------- interpolation (top-level strings) ----------
 INTERP_RE = re.compile(r"\$\{([^}]+)\}")
+TARGET_SCOPED_TOKENS = ("currentChecksum", "currentChecksum8", "depChecksum")
 
 def env_func(name, default=""):
 	return os.getenv(name, default)
@@ -126,6 +127,11 @@ def interpolate_scalar(s: str) -> str:
 	# Interpolate ${...} in arbitrary strings in settings (registry, owner, etc.)
 	def repl(m):
 		expr = m.group(1).strip()
+
+		# Important: dont resolve target-specific functions here
+		if any(tok in expr for tok in TARGET_SCOPED_TOKENS):
+			return "${" + expr + "}"  # keep expression as it is
+
 		# Allow only env(), readFile(), checksum(), gitShortSha(), concat()
 		# (No currentChecksum here - that's target-scoped)
 		safe_env = {
@@ -135,11 +141,13 @@ def interpolate_scalar(s: str) -> str:
 			"gitShortSha": git_short_sha_func,
 			"concat": concat_func,
 		}
+
 		try:
 			val = eval(expr, {"__builtins__": {}}, safe_env)
 		except Exception as e:
 			raise ValueError(f"Interpolation error in '{s}': {e}") from e
 		return str(val)
+
 	return INTERP_RE.sub(repl, s)
 
 def deep_interpolate(node):
@@ -273,6 +281,8 @@ def compute_all_hashes(settings: dict, selected: list[str]) -> dict[str,str]:
 
 # ---------- tag expression (target-scoped) ----------
 def eval_tag_expr(expr: str, settings: dict, tname: str, hashes: dict[str,str]) -> str:
+	n = settings.get("hash",{}).get("tag_length", 8)
+
 	safe_env = {
 		"env": env_func,
 		"readFile": read_file_func,
@@ -283,35 +293,64 @@ def eval_tag_expr(expr: str, settings: dict, tname: str, hashes: dict[str,str]) 
 		"currentChecksum": lambda: hashes[tname],
 		"currentChecksum8": lambda: short_hash(hashes[tname], n),
 		"depChecksum": lambda name: hashes.get(name, ""),
+		"depChecksum8": lambda name: short_hash(hashes.get(name, ""), n),
 		"short": lambda s: short_hash(str(s), n),
 	}
 	try:
 		val = eval(expr, {"__builtins__": {}}, safe_env)
 	except Exception as e:
 		raise ValueError(f"Tag expression error in target '{tname}': {e}") from e
+
 	return normalize_tag(val)
 
-def compute_tags(settings: dict, selected: list[str]) -> dict[str,str]:
+def compute_tags(settings: dict, selected: list[str]):
 	hashes = compute_all_hashes(settings, selected)
-	n = settings.get("hash",{}).get("tag_length", 8)
-	tags = {}
+	n = settings.get("hash", {}).get("tag_length", 8)
+
+	def eval_one(expr: str, tname: str):
+		if expr.startswith("${") and expr.endswith("}"):
+			inner = expr[2:-1].strip()
+			return eval_tag_expr(inner, settings, tname, hashes)
+		# gemischte Strings mit ${...}
+		if "${" in expr:
+			def repl(m): return eval_tag_expr(m.group(1), settings, tname, hashes)
+			return normalize_tag(re.sub(r"\$\{([^}]+)\}", repl, expr))
+		return normalize_tag(expr)
+
+	primary, all_tags = {}, {}
 	for tname in selected:
 		t = settings["targets"][tname]
-		expr = t.get("tag")
-		if isinstance(expr, str):
-			# (gleich wie bisher) – Ausdrücke/Strings unverändert auswerten
-			if expr.startswith("${") and expr.endswith("}"):
-				inner = expr[2:-1].strip()
-				tags[tname] = eval_tag_expr(inner, settings, tname, hashes)
-			elif "${" in expr:
-				def repl(m): return eval_tag_expr(m.group(1), settings, tname, hashes)
-				tags[tname] = normalize_tag(re.sub(r"\$\{([^}]+)\}", repl, expr))
-			else:
-				tags[tname] = normalize_tag(expr)
+		tag_list = []
+
+		if "tags" in t and t["tags"] is not None:
+			for item in t["tags"]:
+				tag_list.append(eval_one(str(item), tname))
 		else:
-			# Kein tag angegeben → kurzer Hash
-			tags[tname] = short_hash(hashes[tname], n)
-	return tags
+			# Einzel-Tag-Logik von vorher:
+			expr = t.get("tag")
+			if isinstance(expr, str) and expr:
+				tag_list = [eval_one(expr, tname)]
+			else:
+				# Default: kurzer Hash
+				tag_list = [short_hash(hashes[tname], n)]
+
+		# latest aus Kompatibilität anhängen
+		if t.get("latest", False) and "latest" not in tag_list:
+			tag_list.append("latest")
+
+		# Deduplizieren, Reihenfolge erhalten
+		seen = set(); uniq = []
+		for x in tag_list:
+			if x not in seen:
+				seen.add(x); uniq.append(x)
+		# Sicherheitsnetz: mindestens 1 Tag
+		if not uniq:
+			uniq = [short_hash(hashes[tname], n)]
+
+		all_tags[tname] = uniq
+		primary[tname]	= uniq[0]
+
+	return primary, all_tags
 
 # ---------- image refs / existence ----------
 def image_ref(settings: dict, tname: str, tag: str) -> str:
@@ -351,30 +390,21 @@ def want_remote_check(settings: dict, explicit: str|None) -> bool:
 	return bool(settings.get("push", True))  # auto
 
 # ---------- HCL generation ----------
-def gen_hcl(settings: dict, tags: dict[str, str], targets_subset=None) -> str:
-	targets = settings["targets"]; bundles = settings["bundles"]
+def gen_hcl(settings: dict, primary_tags: dict[str,str], all_tags_map: dict[str,list[str]], targets_subset=None) -> str:
+	targets = settings["targets"]
 	subset = targets_subset or list(targets.keys())
 	out = []
 
 	for tname in subset:
 		t = targets[tname]
-		tag = tags[tname]
-
-		# --- Auto-Args aus deps via image_ref(...) ---
+		# Auto-Args mit Primär-Tag der Deps
 		auto_args = {}
 		for dep in t.get("deps", []):
-			key = f"IMAGE_{dep.replace('-', '_').upper()}"
-			dep_tag = tags.get(dep)
+			key = f"IMAGE_{dep.replace('-','_').upper()}"
+			auto_args[key] = image_ref(settings, dep, primary_tags[dep])
 
-			if dep_tag is None:
-				# Fallback: eigenen Tag für dep schnell berechnen (zur Not nur self-Hash)
-				raise KeyError(f"Missing tag for dependency '{dep}' when generating HCL for '{tname}'")
-
-			auto_args[key] = image_ref(settings, dep, dep_tag)
-
-		# User-Args haben Vorrang:
 		user_args = t.get("build_args", {}) or {}
-		all_args = {**auto_args, **user_args}
+		all_args  = {**auto_args, **user_args}
 
 		out += [
 			"",
@@ -382,22 +412,19 @@ def gen_hcl(settings: dict, tags: dict[str, str], targets_subset=None) -> str:
 			f'	context = "{t["context"]}"',
 			f'	dockerfile = "{t["dockerfile"]}"',
 		]
-
 		if all_args:
 			out.append("  args = {")
 			for k in sorted(all_args):
 				out.append(f'	 {k} = "{all_args[k]}",')
 			out.append("  }")
 
+		# ← hier ALLE Tags ausgeben
 		out.append("  tags = [")
-		out.append(f'	 "{image_ref(settings, tname, tag)}",')
-		if t.get("latest", False):
-			out.append(f'	 "{image_ref(settings, tname, "latest")}",')
+		for tag in all_tags_map[tname]:
+			out.append(f'	 "{image_ref(settings, tname, tag)}",')
 		out.append("  ]")
 		out.append("}")
 
-	# FIXME: correct?
-	# optional: default-Gruppe für bakes ohne Zielnamen
 	if subset:
 		lst = ",".join(f'"{x}"' for x in subset)
 		out.append('\n# default group')
@@ -406,32 +433,38 @@ def gen_hcl(settings: dict, tags: dict[str, str], targets_subset=None) -> str:
 	return "\n".join(out) + "\n"
 
 # ---------- plan / build ----------
-def plan(settings: dict, args, selected_override: list[str] | None = None):
-	if selected_override is not None:
-		selected = selected_override
-	else:
-		selected = select_targets(settings, args.targets)
-
-	tags = compute_tags(settings, selected)
+def plan(settings, args, selected_override=None):
+	selected = selected_override or select_targets(settings, args.targets)
+	primary_tags, all_tags = compute_tags(settings, selected)
 	remote = want_remote_check(settings, args.check)
 
 	to_build, decisions = [], {}
 	for n in selected:
-		ref = image_ref(settings, n, tags[n])
+		ref = image_ref(settings, n, primary_tags[n])  # ← Primär-Tag entscheidet
 		exists = image_exists_remote(ref) if remote else image_exists_local(ref)
 		reason = "exists-remote" if (remote and exists) else ("exists-local" if (not remote and exists) else "missing")
 		force = n in (args.force or [])
 		skip  = n in (args.skip  or [])
 		build = (force or not exists) and not skip
-		decisions[n] = {"tag": tags[n], "ref": ref, "exists": exists, "reason": reason, "build": build, "force": force, "skip": skip}
+
+		decisions[n] = {
+			"primary_tag": primary_tags[n],
+			"all_tags": all_tags[n],		  # ← zum Anzeigen nützlich
+			"ref": ref,
+			"exists": exists,
+			"reason": reason,
+			"build": build,
+			"force": force,
+			"skip":  skip,
+		}
 		if build:
 			to_build.append(n)
 		if args.end and n in args.end:
 			break
 
-	return selected, tags, to_build, decisions
+	return selected, primary_tags, all_tags, to_build, decisions
 
-def do_build(settings: dict, args, to_build: list[str], tags: dict[str, str]):
+def do_build(settings: dict, args, to_build: list[str], primary_tags: dict[str,str], all_tags_map: dict[str,list[str]]):
 	"""
 	Build die 'to_build'-Targets sequenziell.
 	- HCL wird für die gesamte Auswahl (Closure über --targets) erzeugt,
@@ -440,21 +473,14 @@ def do_build(settings: dict, args, to_build: list[str], tags: dict[str, str]):
 	"""
 	from pathlib import Path
 
-	# 1) Auswahl bestimmen (Closure über --targets); falls nichts angegeben -> alle
 	selected = select_targets(settings, args.targets)
-
 	if not to_build:
-		print("Nothing to build.")
-		return
+		print("Nothing to build."); return
 
-	# 2) HCL für die gesamte Auswahl erzeugen (damit Dep-IMAGE_* korrekt sind)
-	hcl = gen_hcl(settings, tags, targets_subset=selected)
-	tmp = Path(".bake.tmp.hcl")
-	tmp.write_text(hcl, encoding="utf-8")
-
+	hcl = gen_hcl(settings, primary_tags, all_tags_map, targets_subset=selected)
+	tmp = Path(".bake.tmp.hcl"); tmp.write_text(hcl, encoding="utf-8")
 	try:
-		# 3) Gemeinsame Kommando-Basis
-		cmd = ["docker", "buildx", "bake", "-f", str(tmp)]
+		cmd = ["docker","buildx","bake","-f", str(tmp)]
 		if settings.get("builder"):
 			cmd += ["--builder", settings["builder"]]
 		if settings.get("platforms"):
@@ -463,23 +489,20 @@ def do_build(settings: dict, args, to_build: list[str], tags: dict[str, str]):
 		push_flag = args.push if args.push is not None else settings.get("push", True)
 		base_cmd = cmd + (["--push"] if push_flag else ["--load"])
 
-		# 4) Sequenziell bauen (stabil bzgl. FROM-Dependencies)
 		for t in to_build:
 			print("RUN:", " ".join(base_cmd + [t]))
 			run(base_cmd + [t])
-
 	finally:
 		if not getattr(args, "keep_hcl", False):
 			tmp.unlink(missing_ok=True)
-		else:
-			print(f"Kept temp HCL at {tmp}")
 
 def select_targets(settings: dict, names: list[str] | None) -> list[str]:
+	"""Wählt die gewünschten Targets (oder alle) und ergänzt transitiv alle Dependencies.
+	Gibt eine topologisch sortierte Liste zurück.
+	"""
 	tdefs = settings["targets"]
 	if not names:
-		# nichts angegeben -> alle Targets
-		selected = list(tdefs.keys())
-		return topo_sort(settings, selected)
+		return topo_sort(settings, list(tdefs.keys()))
 
 	acc = set()
 	def add(n: str):
@@ -525,7 +548,7 @@ def main():
 	args = ap.parse_args()
 	settings = load_settings(args.settings)
 
-	# apply overrides
+	# apply --set overrides
 	for ov in args.overrides:
 		if "=" not in ov:
 			raise SystemExit(f"--set expects key=value, got: {ov}")
@@ -533,28 +556,29 @@ def main():
 		set_deep(settings, k.strip(), v)
 	settings = coerce_bools(settings)
 
-	selected, tags, to_build, decisions = plan(settings, args)
+	selected = select_targets(settings, args.targets)
+	selected, primary_tags, all_tags_map, to_build, decisions = plan(settings, args, selected_override=selected)
 
 	if args.cmd == "plan":
 		if args.print_env:
 			for n in selected:
 				envname = f"TAG_{n.replace('-','_').upper()}"
 				print(f"{envname}={decisions[n]['tag']}")
+
 		if args.json:
 			print(json.dumps({"selected": selected, "decisions": decisions}, indent=2))
 		else:
 			for n in selected:
 				d = decisions[n]
 				mark = "BUILD" if d["build"] else "skip"
-				print(f"{n:<22} {d['tag'][:12]}  {mark:5} ({d['reason']})  {d['ref']}")
+				all_tags_str = ",".join(d["all_tags"])
+				print(f"{n:<22} {d['primary_tag']:<12} {mark:5} ({d['reason']})  {d['ref']}  [{all_tags_str}]")
+
 			print("\nWill build:" if to_build else "\nNothing to build.", ", ".join(to_build))
 		return
 
 	if args.cmd == "gen-hcl":
-		selected = select_targets(settings, args.targets)
-		# plan nur, um die Tags (inkl. Deps) zu bekommen – decisions brauchst du hier nicht
-		_sel, tags, _to_build, _dec = plan(settings, args, selected_override=selected)
-		hcl = gen_hcl(settings, tags, targets_subset=selected)	# <— Closure in die Datei
+		hcl = gen_hcl(settings, primary_tags, all_tags_map, targets_subset=selected)
 
 		if args.output == "-":
 			print(hcl, end="")
@@ -564,7 +588,7 @@ def main():
 		return
 
 	if args.cmd == "build":
-		do_build(settings, args, to_build, {n: decisions[n]["tag"] for n in selected})
+		do_build(settings, args, to_build, primary_tags, all_tags_map)
 		return
 
 if __name__ == "__main__":
