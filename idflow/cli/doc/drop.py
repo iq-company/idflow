@@ -1,9 +1,6 @@
 from __future__ import annotations
-import shutil
-from pathlib import Path
 import typer
-from idflow.core.repo import find_doc_dir
-from idflow.core.config import config
+from idflow.core.fs_markdown import FSMarkdownDocument
 
 def drop(
     uuid: str = typer.Argument(...),
@@ -12,13 +9,12 @@ def drop(
     if hasattr(uuid, 'default'):
         uuid = uuid.default
 
-    # Use configuration for base_dir
-    base_dir = config.base_dir
+    # Find the document using ORM
+    doc = FSMarkdownDocument.find(uuid)
+    if not doc:
+        raise typer.BadParameter(f"Document not found: {uuid}")
 
-    cur_dir = find_doc_dir(base_dir, uuid)
-    if not cur_dir:
-        raise typer.BadParameter(f"Dokument nicht gefunden: {uuid}")
-
-    shutil.rmtree(cur_dir)
+    # Destroy the document using ORM
+    doc.destroy()
     typer.echo(f"deleted {uuid}")
 

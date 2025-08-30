@@ -3,10 +3,8 @@
 Locate command for finding document paths by UUID.
 """
 
-from pathlib import Path
 import typer
-from idflow.core.repo import find_doc_dir
-from idflow.core.config import config
+from idflow.core.fs_markdown import FSMarkdownDocument
 
 def locate(
     uuid: str = typer.Argument(..., help="Document UUID to locate"),
@@ -21,15 +19,9 @@ def locate(
     if hasattr(uuid, 'default'):
         uuid = uuid.default
 
-    # Use configuration for base_dir
-    base_dir = config.base_dir
-
-    doc_dir = find_doc_dir(base_dir, uuid)
-    if not doc_dir:
+    # Find the document using ORM
+    doc = FSMarkdownDocument.find(uuid)
+    if not doc:
         raise typer.BadParameter(f"Document not found: {uuid}")
 
-    doc_path = doc_dir / "doc.md"
-    if not doc_path.exists():
-        raise typer.BadParameter(f"Document file not found: {doc_path}")
-
-    typer.echo(str(doc_path))
+    typer.echo(str(doc.doc_file))

@@ -1,0 +1,22 @@
+# Example configuration file for idflow
+# Copy this file to config/idflow.yml and modify as needed
+
+# Base directory for documents
+base_dir: "data"
+
+# Configuration directory
+config_dir: "config"
+
+# Document implementation to use
+# Supported values:
+#   - "fs_markdown": Filesystem-based storage using markdown files (default)
+#   - "database": Database-based storage (future implementation)
+document_implementation: "fs_markdown"
+
+# Additional configuration options can be added here
+# For example, database connection settings when using database implementation
+# database:
+#   host: "localhost"
+#   port: 5432
+#   name: "idflow"
+#   user: "idflow_user"

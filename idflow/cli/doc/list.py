@@ -3,10 +3,8 @@ import json
 import typer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from idflow.core.io import read_frontmatter
+from idflow.core.fs_markdown import FSMarkdownDocument
 from idflow.core.filters import match_filter
-from idflow.core.repo import doc_paths
-from idflow.core.config import config
 
 app = typer.Typer(add_completion=False)
 
@@ -42,9 +40,6 @@ def list_docs(
     if hasattr(col, 'default'):
         col = col.default
 
-    # Use configuration for base_dir
-    base_dir = config.base_dir
-
     # Build filters from individual parameters
     filters = []
     if status:
@@ -54,9 +49,9 @@ def list_docs(
     if exists:
         filters.append(f"{exists}=exists")
     if doc_ref:
-        filters.append(f"doc-ref={doc_ref}")
+        filters.append(f"doc_ref={doc_ref}")
     if file_ref:
-        filters.append(f"file-ref={file_ref}")
+        filters.append(f"file_ref={file_ref}")
     if tags:
         filters.append(f"tags={tags}")
 
@@ -67,55 +62,93 @@ def list_docs(
     # Use columns parameter if provided, otherwise use col
     cols = columns or col or ["id"]
 
-    docs = []
-    for doc_path in doc_paths(base_dir):
-        fm, _ = read_frontmatter(doc_path)
-        if not fm:
-            continue
-        fm["_doc_path"] = doc_path
-        docs.append(fm)
+    # Convert filters to ORM query format
+    query_filters = {}
+    for f in filters:
+        prop, expr = _parse_prop_eq_val(f, "--filter")
+        prop = prop.strip()
+        expr = expr.strip().strip('"').strip("'")
 
-    def passes(fm: Dict[str, Any]) -> bool:
-        for f in filters:
-            prop, expr = _parse_prop_eq_val(f, "--filter")
-            prop = prop.strip()
-            expr = expr.strip().strip('"').strip("'")
-            if prop == "doc-ref":
-                keys = {x.get("key") for x in fm.get("_doc_refs", []) if isinstance(x, dict)}
-                if expr not in keys:
-                    return False
-            elif prop == "file-ref":
-                keys = {x.get("key") for x in fm.get("_file_refs", []) if isinstance(x, dict)}
-                if expr not in keys:
-                    return False
-            else:
-                val = _get_dot(fm, prop)
-                if val is None and expr != "exists":
-                    return False
-                if not match_filter(val, expr):
-                    return False
-        return True
+        if prop == "doc-ref":
+            query_filters["doc_ref"] = expr
+        elif prop == "file-ref":
+            query_filters["file_ref"] = expr
+        elif expr == "exists":
+            query_filters["exists"] = prop
+        else:
+            # For simple equality filters, we can use the property directly
+            # For complex filters like "observ*", we'll need to post-filter
+            query_filters[prop] = expr
 
-    filtered = [fm for fm in docs if passes(fm)]
+    # Use ORM to find documents
+    docs = FSMarkdownDocument.where(**query_filters)
 
-    for fm in filtered:
-        row = []
-        for c in cols:
-            if c in ("id", "uuid"):
-                row.append(fm.get("id", ""))
-            elif c == "status":
-                row.append(fm.get("status", ""))
-            elif c in ("_doc_refs", "doc-keys", "doc_keys", "doc-ref"):
-                keys = sorted({x.get("key") for x in fm.get("_doc_refs", []) if isinstance(x, dict) and "key" in x})
-                row.append(",".join(keys))
-            elif c in ("_file_refs", "file-keys", "file_keys", "file-ref"):
-                keys = sorted({x.get("key") for x in fm.get("_file_refs", []) if isinstance(x, dict) and "key" in x})
-                row.append(",".join(keys))
-            else:
-                val = _get_dot(fm, c)
-                if isinstance(val, (list, dict)):
-                    row.append(json.dumps(val, ensure_ascii=False))
+    # Post-filter for complex expressions that the ORM can't handle
+    if filter_:
+        filtered = []
+        for doc in docs:
+            passes = True
+            for f in filters:
+                prop, expr = _parse_prop_eq_val(f, "--filter")
+                prop = prop.strip()
+                expr = expr.strip().strip('"').strip("'")
+
+                if prop == "doc-ref":
+                    keys = {x.key for x in doc.doc_refs}
+                    if expr not in keys:
+                        passes = False
+                        break
+                elif prop == "file-ref":
+                    keys = {x.key for x in doc.file_refs}
+                    if expr not in keys:
+                        passes = False
+                        break
                 else:
-                    row.append("" if val is None else str(val))
-        typer.echo(" | ".join(row))
+                    val = _get_dot(doc._data, prop)
+                    if val is None and expr != "exists":
+                        passes = False
+                        break
+                    if not match_filter(val, expr):
+                        passes = False
+                        break
+
+            if passes:
+                filtered.append(doc)
+        docs = filtered
+
+    # Output results
+    if not docs:
+        typer.echo("No documents found.")
+        return
+
+    # Convert to list of dictionaries for output
+    result_docs = []
+    for doc in docs:
+        doc_dict = doc.to_dict()
+        doc_dict["_doc_path"] = str(doc.doc_file)
+        result_docs.append(doc_dict)
+
+    # Output in requested format
+    if len(cols) == 1 and cols[0] == "id":
+        # Simple ID list
+        for doc in docs:
+            typer.echo(doc.id)
+    else:
+        # Detailed output
+        for doc in result_docs:
+            output = {}
+            for col in cols:
+                if col == "id":
+                    output[col] = doc.get("id", "")
+                elif col == "status":
+                    output[col] = doc.get("status", "")
+                elif col == "body":
+                    output[col] = doc.get("body", "")[:100] + "..." if len(doc.get("body", "")) > 100 else doc.get("body", "")
+                else:
+                    output[col] = doc.get(col, "")
+
+            if len(cols) == 1:
+                typer.echo(output[cols[0]])
+            else:
+                typer.echo(json.dumps(output, ensure_ascii=False))
 

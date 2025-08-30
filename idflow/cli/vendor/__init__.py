@@ -6,39 +6,39 @@ app.command("copy")(copy_vendor)
 
 # Usage:
 # ===
-# # 1) interaktive Auswahl einer Quelle
+# # 1) interactive selection of a source
 # idflow vendor copy
-# 
-# # 2) alle erlaubten Verzeichnisse in das aktuelle Projekt kopieren
+#
+# # 2) copy all allowed directories to the current project
 # idflow vendor copy --all
-# 
-# # 3) in anderes Zielverzeichnis
+#
+# # 3) to another target directory
 # idflow vendor copy --dest ./my-project
-# Beim Kopieren wirst du pro bestehender Datei gefragt:
-# O → überschreiben
-# S → überspringen
-# A → gesamten Vorgang abbrechen
+# When copying, you will be asked for each existing file:
+# O → overwrite
+# S → skip
+# A → abort entire operation
 
 # Story Desc
-# erstelle einen weiteren cli ordner für sowas wie sync/vendor/copy (oder besseren vorschlag?) um in das Verzeichnis, in dem `idflow` aufgerufen wird, Dateien aus dem pip Folder zu kopieren (um Projektspezifische Änderungen vorzunehmen). 
-# 
-# Z.B. werden mit dem pip Ordner wie pipelines, tasks, prompts ausgeliefert. 
-# 
-# Diese werden dann durch die Konfiguration im Projektverzeichnis verwendet.
-# 
-# Wenn für das Projekt aber einzelne Files ergänzt werden sollen, sollen diese durch FS-Strukturgleichheit im Projekt überdefiniert werden können.
-# 
-# In dem cli Befehl soll eine Konstante definiert werden, in der die Verzeichnisse aufgezählt werden, die eben ins lokale Projekt kopiert werden können.
-# 
+# create another cli folder for something like sync/vendor/copy (or better suggestion?) to copy files from the pip folder to the directory where `idflow` is called (to make project-specific changes).
+#
+# E.g. pipelines, tasks, prompts are delivered with the pip folder.
+#
+# These are then used by the configuration in the project directory.
+#
+# If individual files are to be added for the project, these should be able to be overridden by FS structure equality in the project.
+#
+# In the cli command, a constant should be defined in which the directories are listed that can be copied to the local project.
+#
 # Z.B.
 # tasks/
 # templates/researcher
 # templates/enricher
 # templates/generator
-# 
-# Durch diese Definition möchte ich verhindern, dass einfach "alle" templates genommen werden "müssen" (wie bei tasks), sondern gehe auf eine mögliche feingranularere Struktur ein.
-# 
-# Der neue CLI Befehl soll entweder "--all" als Parameter haben (dann werden alle Verzeichnisse kopiert), oder nicht, dann sollen die möglichen Verzeichnisse nummeriert dargestellt werden, sodass der User die Zahl für einen Ordner via Prompt angeben kann, um den gewünschten Ordner ins Projektverzeichnis zu kopieren.
-# 
-# Sind bereits files vorhanden, soll je File gefragt werden, ob überschrieben oder abgebrochen werden soll.
+#
+# Through this definition I want to prevent that simply "all" templates have to be taken (like with tasks), but go into a possible finer-grained structure.
+#
+# The new CLI command should either have "--all" as a parameter (then all directories are copied), or not, then the possible directories should be displayed numbered, so that the user can specify the number for a folder via prompt to copy the desired folder to the project directory.
+#
+# If files already exist, each file should be asked whether to overwrite or abort.
 

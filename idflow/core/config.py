@@ -22,7 +22,8 @@ class Config:
         # Default configuration
         self._config = {
             "base_dir": "data",
-            "config_dir": "config"
+            "config_dir": "config",
+            "document_implementation": "fs_markdown"
         }
 
         # Try to load from config file (either default or from IDFLOW_CONFIG env var)
@@ -54,6 +55,8 @@ class Config:
             self._config["base_dir"] = os.getenv("IDFLOW_BASE_DIR")
         if os.getenv("IDFLOW_CONFIG_DIR"):
             self._config["config_dir"] = os.getenv("IDFLOW_CONFIG_DIR")
+        if os.getenv("IDFLOW_DOCUMENT_IMPL"):
+            self._config["document_implementation"] = os.getenv("IDFLOW_DOCUMENT_IMPL")
 
     def reload(self):
         """Reload configuration from files and environment variables."""
@@ -87,6 +90,11 @@ class Config:
     def config_dir(self) -> Path:
         """Get the configuration directory."""
         return Path(self._config["config_dir"])
+
+    @property
+    def document_implementation(self) -> str:
+        """Get the document implementation to use."""
+        return self._config["document_implementation"]
 
     def get(self, key: str, default=None):
         """Get a configuration value."""
