@@ -51,6 +51,8 @@ There will be ORM Adapters to connect to other Datasources (like DBMS), for case
 ## Quickstart
 
 ### Installation and Setup
+
+#### For Users (Production)
 ```bash
 # switch into an isolated directory
 mkdir myproject
@@ -63,6 +65,53 @@ cd myproject
 python3 -m venv .venv && source .venv/bin/activate
 pip install idflow
 ```
+
+#### For Devs (Development)
+```bash
+# Clone repo
+git clone <repository-url>
+cd idflow
+
+# Create venv
+python3 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+
+# Install dependencies (editable mode)
+pip install -e .
+
+# Install test deps (optional)
+pip install -e ".[test]"
+```
+
+### Running Tests
+
+After installing the dependencies, you can run the test suite:
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with verbose output
+pytest -v
+
+# Run tests with coverage report
+pytest --cov=tasks
+
+# Run specific test file
+pytest tasks/keyword_extract/test_keyword_extract.py
+
+# Run specific test function
+pytest tasks/keyword_extract/test_keyword_extract.py::test_basic_keyword_extraction
+
+# Skip slow tests
+pytest -m "not slow"
+
+# Run only integration tests
+pytest -m "integration"
+```
+
+**Note**: Make sure you're in the project root directory and have activated your virtual environment before running tests.
 
 In the selected target directory run:
 
