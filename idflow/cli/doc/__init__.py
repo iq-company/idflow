@@ -5,6 +5,7 @@ from .modify import modify
 from .set_status import set_status
 from .drop import drop
 from .drop_all import drop_all
+from .locate import locate
 
 app = typer.Typer(add_completion=False)
 app.command("add")(add)
@@ -13,6 +14,7 @@ app.command("modify")(modify)
 app.command("set-status")(set_status)
 app.command("drop")(drop)
 app.command("drop-all")(drop_all)
+app.command("locate")(locate)
 
 # Story desc:
 # Erstelle mit Typer ein python cli, das Werte entgegennimmt um "Documents" (markdown + frontmatter) zu verwalten.

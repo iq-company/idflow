@@ -2,10 +2,11 @@ from __future__ import annotations
 import json
 import typer
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from idflow.core.io import read_frontmatter
 from idflow.core.filters import match_filter
 from idflow.core.repo import doc_paths
+from idflow.core.config import config
 
 app = typer.Typer(add_completion=False)
 
@@ -25,19 +26,49 @@ def _get_dot(fm: Dict[str, Any], path: str) -> Any:
 
 @app.command("list")
 def list_docs(
-    base_dir: str = typer.Option("data", "--base-dir"),
     filter_: List[str] = typer.Option(None, "--filter", help='property=EXPR (z.B. title="observ*" | priority=">0.5" | meta.owner="exists" | doc-ref="key")'),
     col: List[str] = typer.Option(None, "--col", help="Ausgabespalten (default: uuid)"),
+    status: Optional[str] = None,
+    columns: Optional[List[str]] = None,
+    doc_ref: Optional[str] = None,
+    file_ref: Optional[str] = None,
+    priority: Optional[str] = None,
+    exists: Optional[str] = None,
+    tags: Optional[str] = None,
 ):
     # Extract default values from typer objects for direct function calls
-    if hasattr(base_dir, 'default'):
-        base_dir = base_dir.default
     if hasattr(filter_, 'default'):
         filter_ = filter_.default
     if hasattr(col, 'default'):
         col = col.default
+
+    # Use configuration for base_dir
+    base_dir = config.base_dir
+
+    # Build filters from individual parameters
+    filters = []
+    if status:
+        filters.append(f"status={status}")
+    if priority:
+        filters.append(f"priority={priority}")
+    if exists:
+        filters.append(f"{exists}=exists")
+    if doc_ref:
+        filters.append(f"doc-ref={doc_ref}")
+    if file_ref:
+        filters.append(f"file-ref={file_ref}")
+    if tags:
+        filters.append(f"tags={tags}")
+
+    # Combine with explicit filters
+    if filter_:
+        filters.extend(filter_)
+
+    # Use columns parameter if provided, otherwise use col
+    cols = columns or col or ["id"]
+
     docs = []
-    for doc_path in doc_paths(Path(base_dir)):
+    for doc_path in doc_paths(base_dir):
         fm, _ = read_frontmatter(doc_path)
         if not fm:
             continue
@@ -45,7 +76,7 @@ def list_docs(
         docs.append(fm)
 
     def passes(fm: Dict[str, Any]) -> bool:
-        for f in filter_ or []:
+        for f in filters:
             prop, expr = _parse_prop_eq_val(f, "--filter")
             prop = prop.strip()
             expr = expr.strip().strip('"').strip("'")
@@ -66,7 +97,6 @@ def list_docs(
         return True
 
     filtered = [fm for fm in docs if passes(fm)]
-    cols = col or ["id"]
 
     for fm in filtered:
         row = []

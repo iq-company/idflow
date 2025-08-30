@@ -9,6 +9,7 @@ from idflow.core.models import DocRef, FileRef
 from idflow.core.repo import find_doc_dir
 from idflow.core.io import read_frontmatter, write_frontmatter
 from idflow.core.props import set_in, parse_simple_value
+from idflow.core.config import config
 
 def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
     if "=" not in arg:
@@ -44,7 +45,6 @@ def modify(
     doc_data: List[str] = typer.Option(None, "--doc-data", help="JSON für zuletzt hinzugefügten _doc_ref"),
     add_file: List[str] = typer.Option(None, "--add-file", help="file_key=./path"),
     file_data: List[str] = typer.Option(None, "--file-data", help="JSON für zuletzt hinzugefügte Datei"),
-    base_dir: Path = typer.Option(Path("data"), "--base-dir"),
 ):
     # Extract default values from typer objects for direct function calls
     if hasattr(uuid, 'default'):
@@ -65,8 +65,10 @@ def modify(
         add_file = add_file.default
     if hasattr(file_data, 'default'):
         file_data = file_data.default
-    if hasattr(base_dir, 'default'):
-        base_dir = base_dir.default
+
+    # Use configuration for base_dir
+    base_dir = config.base_dir
+
     cur_dir = find_doc_dir(base_dir, uuid)
     if not cur_dir:
         raise typer.BadParameter(f"Dokument nicht gefunden: {uuid}")
@@ -109,12 +111,15 @@ def modify(
     if add_doc:
         fm["_doc_refs"] = fm.get("_doc_refs", [])
         for spec in add_doc:
-            key, uuid2 = _parse_prop_eq_val(spec, "--add-doc")
-            fm["_doc_refs"].append(DocRef(key=key.strip(), uuid=uuid2.strip()).model_dump())
+            key, uuid = _parse_prop_eq_val(spec, "--add-doc")
+            fm["_doc_refs"].append(DocRef(key=key.strip(), uuid=uuid.strip()).model_dump())
         for js in doc_data or []:
             if not fm["_doc_refs"]:
                 raise typer.BadParameter("--doc-data ohne vorhandenes --add-doc")
-            d = json.loads(js) if js else {}
+            try:
+                d = json.loads(js) if js else {}
+            except json.JSONDecodeError as e:
+                raise typer.BadParameter(f"--doc-data JSON ungültig: {e}")
             fm["_doc_refs"][-1]["data"] = d
 
     # _file_refs
@@ -130,18 +135,23 @@ def modify(
     for js in file_data or []:
         if not pending_files:
             raise typer.BadParameter("--file-data ohne vorhandenes --add-file")
-        d = json.loads(js) if js else {}
+        try:
+            d = json.loads(js) if js else {}
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"--file-data JSON ungültig: {e}")
         pending_files[-1][1].data = d
 
+    # Dateien kopieren (Name = UUID)
     if pending_files:
         fm["_file_refs"] = fm.get("_file_refs", [])
         for src, ref in pending_files:
-            (cur_dir / ref.uuid).write_bytes(src.read_bytes())
+            shutil.copyfile(src, cur_dir / ref.uuid)
             fm["_file_refs"].append(ref.model_dump())
 
     # Body
-    new_body = _read_body_arg_or_keep(body_arg, body)
+    body = _read_body_arg_or_keep(body_arg, body)
 
-    write_frontmatter(doc_path, fm, new_body)
+    # Schreiben
+    write_frontmatter(doc_path, fm, body)
     typer.echo(str(doc_path))
 

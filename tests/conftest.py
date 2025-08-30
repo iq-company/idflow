@@ -21,14 +21,14 @@ def test_workspace():
 @pytest.fixture
 def temp_data_dir(test_workspace):
     """Create a temporary data directory with status subdirectories."""
-    data_dir = test_workspace / "data"
-    data_dir.mkdir(exist_ok=True)
+    test_data_dir = test_workspace / "test_data"
+    test_data_dir.mkdir(exist_ok=True)
 
     # Create status directories
     for status in ["inbox", "active", "done", "blocked", "archived"]:
-        (data_dir / status).mkdir(exist_ok=True)
+        (test_data_dir / status).mkdir(exist_ok=True)
 
-    yield data_dir
+    yield test_data_dir
 
 
 @pytest.fixture

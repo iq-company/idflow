@@ -5,19 +5,21 @@ import typer
 from idflow.core.models import VALID_STATUS
 from idflow.core.repo import find_doc_dir
 from idflow.core.io import read_frontmatter, write_frontmatter
+from idflow.core.config import config
 
 def set_status(
     uuid: str = typer.Argument(...),
     status: str = typer.Argument(...),
-    base_dir: Path = typer.Option(Path("data"), "--base-dir"),
 ):
     # Extract default values from typer objects for direct function calls
     if hasattr(uuid, 'default'):
         uuid = uuid.default
     if hasattr(status, 'default'):
         status = status.default
-    if hasattr(base_dir, 'default'):
-        base_dir = base_dir.default
+
+    # Use configuration for base_dir
+    base_dir = config.base_dir
+
     if status not in VALID_STATUS:
         raise typer.BadParameter(f"status muss eines von {sorted(VALID_STATUS)} sein.")
     cur_dir = find_doc_dir(base_dir, uuid)

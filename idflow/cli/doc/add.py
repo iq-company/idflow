@@ -1,13 +1,15 @@
 from __future__ import annotations
 import json, shutil, sys
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any, Dict, Tuple
 from uuid import uuid4
 
 import typer
 from idflow.core.models import VALID_STATUS, DocRef, FileRef
+from idflow.core.repo import find_doc_dir
 from idflow.core.io import ensure_dir, write_frontmatter
-from idflow.core.props import set_in, parse_simple_value
+from idflow.core.props import set_in, parse_simple_value, _split_dot_path
+from idflow.core.config import config
 
 def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
     if "=" not in arg:
@@ -25,7 +27,7 @@ def _read_body_param_or_stdin(arg_text: Optional[str]) -> str:
             return ""
     return ""
 
-def add(  # wird in cli/doc/__init__.py via app.command("add")(add) registriert
+def add(
     body_arg: Optional[str] = typer.Argument(None, help="Body-Text (optional, sonst stdin)"),
     status: str = typer.Option("inbox", "--status", help="inbox|active|done|blocked|archived"),
     set_: List[str] = typer.Option(None, "--set", help="property=value (Dot-Pfade erlaubt)"),
@@ -35,13 +37,12 @@ def add(  # wird in cli/doc/__init__.py via app.command("add")(add) registriert
     doc_data: List[str] = typer.Option(None, "--doc-data", help="JSON für zuletzt hinzugefügten _doc_ref"),
     add_file: List[str] = typer.Option(None, "--add-file", help="file_key=./path/to/file.ext"),
     file_data: List[str] = typer.Option(None, "--file-data", help="JSON für zuletzt hinzugefügte Datei"),
-    base_dir: Path = typer.Option(Path("data"), "--base-dir", help="Basisverzeichnis"),
 ):
     # Extract default values from typer objects for direct function calls
-    if hasattr(status, 'default'):
-        status = status.default
     if hasattr(body_arg, 'default'):
         body_arg = body_arg.default
+    if hasattr(status, 'default'):
+        status = status.default
     if hasattr(set_, 'default'):
         set_ = set_.default
     if hasattr(list_add, 'default'):
@@ -56,8 +57,10 @@ def add(  # wird in cli/doc/__init__.py via app.command("add")(add) registriert
         add_file = add_file.default
     if hasattr(file_data, 'default'):
         file_data = file_data.default
-    if hasattr(base_dir, 'default'):
-        base_dir = base_dir.default
+
+    # Use configuration for base_dir
+    base_dir = config.base_dir
+
     if status not in VALID_STATUS:
         raise typer.BadParameter(f"--status muss eines von {sorted(VALID_STATUS)} sein.")
 
@@ -72,21 +75,27 @@ def add(  # wird in cli/doc/__init__.py via app.command("add")(add) registriert
     # --list-add
     for item in list_add or []:
         prop, val = _parse_prop_eq_val(item, "--list-add")
-        sentinel = "__APPEND_INIT__"
-        set_in(fm, prop, sentinel)
-        # navigiere zum Endpunkt und füge an
+        # Parse the property path
         parts = prop.split(".")
         cur = fm
-        for i, p in enumerate(parts):
-            last = i == len(parts) - 1
-            if last:
-                if cur.get(p) == sentinel:
-                    cur[p] = []
-                if not isinstance(cur[p], list):
-                    raise typer.BadParameter(f"{prop} ist keine Liste.")
-                cur[p].append(parse_simple_value(val))
-            else:
-                cur = cur[p]
+
+        # Navigate to the parent of the target property
+        for p in parts[:-1]:
+            if p not in cur:
+                cur[p] = {}
+            cur = cur[p]
+
+        # Get the target property name
+        target_prop = parts[-1]
+
+        # Initialize the list if it doesn't exist
+        if target_prop not in cur:
+            cur[target_prop] = []
+        elif not isinstance(cur[target_prop], list):
+            raise typer.BadParameter(f"{prop} ist keine Liste.")
+
+        # Append the value
+        cur[target_prop].append(parse_simple_value(val))
 
     # --json
     for item in json_kv or []:

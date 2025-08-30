@@ -18,7 +18,10 @@ def _split_dot_path(path: str) -> List[Tuple[str, Optional[int]]]:
     parts = []
     for raw in path.split("."):
         m = _key_index_re.match(raw)
-        parts.append((m.group(1), int(m.group(2))) if m else (raw, None))
+        if m:
+            parts.append((m.group(1), int(m.group(2))))
+        else:
+            parts.append((raw, None))
     return parts
 
 def set_in(container: dict, path: str, value: Any) -> None:
