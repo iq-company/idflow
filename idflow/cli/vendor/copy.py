@@ -3,11 +3,15 @@ import typer
 from pathlib import Path
 from idflow.core.vendor import list_copyable, get_vendor_root, copy_tree_with_prompt
 
-@typer.command("copy")
 def copy_vendor(
     all_: bool = typer.Option(False, "--all", help="Alle erlaubten Verzeichnisse kopieren"),
     dest: Path = typer.Option(Path("."), "--dest", help="Ziel-Projektverzeichnis (default: aktuelles Verzeichnis)"),
 ):
+    # Extract default values from typer.Option objects for direct function calls
+    if hasattr(all_, 'default'):
+        all_ = all_.default
+    if hasattr(dest, 'default'):
+        dest = dest.default
     dest = dest.resolve()
     items = list_copyable()
 

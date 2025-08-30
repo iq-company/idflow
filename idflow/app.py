@@ -1,6 +1,7 @@
 import importlib.metadata as md
 import typer
 from idflow.cli.doc import app as doc_app
+from idflow.cli.vendor import app as vendor_app
 
 # further groups
 # from idflow.cli.othercmd import app as other_app

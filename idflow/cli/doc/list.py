@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import typer
+from pathlib import Path
 from typing import Any, Dict, List
 from idflow.core.io import read_frontmatter
 from idflow.core.filters import match_filter
@@ -22,14 +23,21 @@ def _get_dot(fm: Dict[str, Any], path: str) -> Any:
             return None
     return cur
 
-@typer.command("list")
+@app.command("list")
 def list_docs(
     base_dir: str = typer.Option("data", "--base-dir"),
     filter_: List[str] = typer.Option(None, "--filter", help='property=EXPR (z.B. title="observ*" | priority=">0.5" | meta.owner="exists" | doc-ref="key")'),
     col: List[str] = typer.Option(None, "--col", help="Ausgabespalten (default: uuid)"),
 ):
+    # Extract default values from typer objects for direct function calls
+    if hasattr(base_dir, 'default'):
+        base_dir = base_dir.default
+    if hasattr(filter_, 'default'):
+        filter_ = filter_.default
+    if hasattr(col, 'default'):
+        col = col.default
     docs = []
-    for doc_path in doc_paths(typer.Path(base_dir)):
+    for doc_path in doc_paths(Path(base_dir)):
         fm, _ = read_frontmatter(doc_path)
         if not fm:
             continue

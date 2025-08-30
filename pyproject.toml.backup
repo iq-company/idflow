@@ -6,22 +6,45 @@ build-backend = "setuptools.build_meta"
 name = "idflow"
 version = "0.1.0"
 description = "A document management and workflow system"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "typer>=0.12",
-    "pydantic>=2",
-    "PyYAML>=6",
-    "conductor-python",
-    "litellm>=1.0.0",
-    "keybert>=0.9.0"
+  "typer>=0.12",
+  "pydantic>=2",
+  "PyYAML>=6",
+  "conductor-python",
+  "litellm>=1.0.0",
+  "keybert>=0.9.0"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.0.0",
+  "pytest-cov>=4.0.0"
 ]
 
 [project.scripts]
 idflow = "idflow.app:run"
 
+[tool.setuptools]
+packages = ["idflow", "idflow.cli", "idflow.core", "idflow.tasks"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["idflow*"]
+
+[tool.setuptools.package-data]
+idflow = ["vendor/**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.pyc", "*.pyo", "*.pyd", "__pycache__", "*.so"]
+
+# for plugins:
+# [project.entry-points."idflow.commands"]
+# myplugin = "idflow_myplugin:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tasks"]
@@ -37,3 +60,4 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests"
 ]
+

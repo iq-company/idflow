@@ -1,13 +1,12 @@
 from __future__ import annotations
 import json, shutil, sys
 from pathlib import Path
-from typing import Optional, List, Any, Dict, Tuple
+from typing import Optional, List
 from uuid import uuid4
 
 import typer
-from idflow.core.models import DocRef, FileRef
-from idflow.core.repo import find_doc_dir
-from idflow.core.io import read_frontmatter, write_frontmatter
+from idflow.core.models import VALID_STATUS, DocRef, FileRef
+from idflow.core.io import ensure_dir, write_frontmatter
 from idflow.core.props import set_in, parse_simple_value
 
 def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
@@ -15,35 +14,55 @@ def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
         raise typer.BadParameter(f"{flag} erwartet property=value, nicht: {arg}")
     return arg.split("=", 1)
 
-def _read_body_arg_or_keep(body_arg: Optional[str], current_body: str) -> str:
-    if body_arg is not None:
-        # argument explizit übergeben → ggf. aus stdin lesen, sonst das arg
-        if body_arg == "" and not sys.stdin.isatty():
-            return sys.stdin.read()
-        return body_arg
-    # body_arg nicht gesetzt → stdin? sonst unverändert lassen
+def _read_body_param_or_stdin(arg_text: Optional[str]) -> str:
+    if arg_text not in (None, ""):
+        return arg_text
     if not sys.stdin.isatty():
-        return sys.stdin.read()
-    return current_body
+        try:
+            return sys.stdin.read()
+        except OSError:
+            # pytest capture mode - return empty string
+            return ""
+    return ""
 
-@typer.command("modify")
-def modify(
-    uuid: str = typer.Argument(...),
-    body_arg: Optional[str] = typer.Argument(None, help="Neuer Body (optional, sonst stdin oder unverändert)"),
-    set_: List[str] = typer.Option(None, "--set", help="property=value"),
+def add(  # wird in cli/doc/__init__.py via app.command("add")(add) registriert
+    body_arg: Optional[str] = typer.Argument(None, help="Body-Text (optional, sonst stdin)"),
+    status: str = typer.Option("inbox", "--status", help="inbox|active|done|blocked|archived"),
+    set_: List[str] = typer.Option(None, "--set", help="property=value (Dot-Pfade erlaubt)"),
     list_add: List[str] = typer.Option(None, "--list-add", help="property=value an Liste anhängen"),
-    json_kv: List[str] = typer.Option(None, "--json", help="property=<JSON>"),
+    json_kv: List[str] = typer.Option(None, "--json", help="property=<JSON> (dict/list/value)"),
     add_doc: List[str] = typer.Option(None, "--add-doc", help="keyname=<uuid>"),
     doc_data: List[str] = typer.Option(None, "--doc-data", help="JSON für zuletzt hinzugefügten _doc_ref"),
-    add_file: List[str] = typer.Option(None, "--add-file", help="file_key=./path"),
+    add_file: List[str] = typer.Option(None, "--add-file", help="file_key=./path/to/file.ext"),
     file_data: List[str] = typer.Option(None, "--file-data", help="JSON für zuletzt hinzugefügte Datei"),
-    base_dir: Path = typer.Option(Path("data"), "--base-dir"),
+    base_dir: Path = typer.Option(Path("data"), "--base-dir", help="Basisverzeichnis"),
 ):
-    cur_dir = find_doc_dir(base_dir, uuid)
-    if not cur_dir:
-        raise typer.BadParameter(f"Dokument nicht gefunden: {uuid}")
-    doc_path = cur_dir / "doc.md"
-    fm, body = read_frontmatter(doc_path)
+    # Extract default values from typer objects for direct function calls
+    if hasattr(status, 'default'):
+        status = status.default
+    if hasattr(body_arg, 'default'):
+        body_arg = body_arg.default
+    if hasattr(set_, 'default'):
+        set_ = set_.default
+    if hasattr(list_add, 'default'):
+        list_add = list_add.default
+    if hasattr(json_kv, 'default'):
+        json_kv = json_kv.default
+    if hasattr(add_doc, 'default'):
+        add_doc = add_doc.default
+    if hasattr(doc_data, 'default'):
+        doc_data = doc_data.default
+    if hasattr(add_file, 'default'):
+        add_file = add_file.default
+    if hasattr(file_data, 'default'):
+        file_data = file_data.default
+    if hasattr(base_dir, 'default'):
+        base_dir = base_dir.default
+    if status not in VALID_STATUS:
+        raise typer.BadParameter(f"--status muss eines von {sorted(VALID_STATUS)} sein.")
+
+    doc_id = str(uuid4())
+    fm: dict = {"id": doc_id, "status": status}
 
     # --set
     for item in set_ or []:
@@ -55,8 +74,9 @@ def modify(
         prop, val = _parse_prop_eq_val(item, "--list-add")
         sentinel = "__APPEND_INIT__"
         set_in(fm, prop, sentinel)
+        # navigiere zum Endpunkt und füge an
         parts = prop.split(".")
-        cur: Any = fm
+        cur = fm
         for i, p in enumerate(parts):
             last = i == len(parts) - 1
             if last:
@@ -81,12 +101,15 @@ def modify(
     if add_doc:
         fm["_doc_refs"] = fm.get("_doc_refs", [])
         for spec in add_doc:
-            key, uuid2 = _parse_prop_eq_val(spec, "--add-doc")
-            fm["_doc_refs"].append(DocRef(key=key.strip(), uuid=uuid2.strip()).model_dump())
+            key, uuid = _parse_prop_eq_val(spec, "--add-doc")
+            fm["_doc_refs"].append(DocRef(key=key.strip(), uuid=uuid.strip()).model_dump())
         for js in doc_data or []:
             if not fm["_doc_refs"]:
                 raise typer.BadParameter("--doc-data ohne vorhandenes --add-doc")
-            d = json.loads(js) if js else {}
+            try:
+                d = json.loads(js) if js else {}
+            except json.JSONDecodeError as e:
+                raise typer.BadParameter(f"--doc-data JSON ungültig: {e}")
             fm["_doc_refs"][-1]["data"] = d
 
     # _file_refs
@@ -102,18 +125,28 @@ def modify(
     for js in file_data or []:
         if not pending_files:
             raise typer.BadParameter("--file-data ohne vorhandenes --add-file")
-        d = json.loads(js) if js else {}
+        try:
+            d = json.loads(js) if js else {}
+        except json.JSONDecodeError as e:
+            raise typer.BadParameter(f"--file-data JSON ungültig: {e}")
         pending_files[-1][1].data = d
 
+    # Ziel anlegen
+    out_dir = base_dir / status / doc_id
+    ensure_dir(out_dir)
+    out_file = out_dir / "doc.md"
+
+    # Dateien kopieren (Name = UUID)
     if pending_files:
         fm["_file_refs"] = fm.get("_file_refs", [])
         for src, ref in pending_files:
-            (cur_dir / ref.uuid).write_bytes(src.read_bytes())
+            shutil.copyfile(src, out_dir / ref.uuid)
             fm["_file_refs"].append(ref.model_dump())
 
     # Body
-    new_body = _read_body_arg_or_keep(body_arg, body)
+    body = _read_body_param_or_stdin(body_arg)
 
-    write_frontmatter(doc_path, fm, new_body)
-    typer.echo(str(doc_path))
+    # Schreiben
+    write_frontmatter(out_file, fm, body)
+    typer.echo(doc_id)
 

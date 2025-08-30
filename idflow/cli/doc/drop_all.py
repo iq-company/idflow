@@ -4,11 +4,15 @@ from pathlib import Path
 import typer
 from idflow.core.models import VALID_STATUS
 
-@typer.command("drop-all")
 def drop_all(
     force: bool = typer.Option(False, "--force", help="ohne Nachfrage löschen"),
     base_dir: Path = typer.Option(Path("data"), "--base-dir"),
 ):
+    # Extract default values from typer.Option objects for direct function calls
+    if hasattr(force, 'default'):
+        force = force.default
+    if hasattr(base_dir, 'default'):
+        base_dir = base_dir.default
     all_dirs = []
     for status in VALID_STATUS:
         root = base_dir / status
