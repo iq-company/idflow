@@ -9,18 +9,16 @@ import importlib.resources as ir
 # Was kopiert werden darf (relativ zum Vendor-Root):
 COPYABLE_DIRS: List[str] = [
     "tasks",
-    "templates/researcher",
-    "templates/enricher",
-    "templates/generator",
+    "workflows",
 ]
 
 def get_vendor_root() -> Path:
     """
     Liefert den Ordner im installierten Paket, in dem die Vendor-Dateien liegen.
-    Standard: idflow/vendor
+    Standard: idflow (das Paket selbst)
     """
     # nutzt importlib.resources, funktioniert auch im Zip/egg, solange als Paketdaten inkludiert
-    return Path(ir.files("idflow") / "vendor")
+    return Path(ir.files("idflow"))
 
 def list_copyable() -> List[Tuple[int, str, Path]]:
     root = get_vendor_root()
