@@ -51,38 +51,47 @@ class FSMarkdownDocument(Document):
         """Get the data directory path."""
         return self._data_dir
 
-    def _get_stage_path(self, stage_name: str) -> Path:
-        """Get the filesystem path for a stage within this document."""
-        return self.doc_dir / "stages" / stage_name
+    def _get_stage_path(self, stage_name: str, counter: int = 1) -> Path:
+        """Get the filesystem path for a stage."""
+        return self.doc_dir / "stages" / stage_name / str(counter)
 
     def _load_stages(self) -> List[Stage]:
         """Load stages from the filesystem."""
+        from .document import Stage
+
         stages = []
         stages_dir = self.doc_dir / "stages"
 
         if stages_dir.exists():
-            for stage_dir in stages_dir.iterdir():
-                if stage_dir.is_dir():
-                    stage_file = stage_dir / "stage.md"
-                    if stage_file.exists():
-                        try:
-                            stage_data, body = read_frontmatter(stage_file)
-                            stage = Stage(
-                                name=stage_dir.name,
-                                parent=self,
-                                body=body,
-                                **stage_data
-                            )
-                            stages.append(stage)
-                        except Exception:
-                            # Skip corrupted stage files
-                            continue
+            for stage_name_dir in stages_dir.iterdir():
+                if stage_name_dir.is_dir():
+                    # Each stage name can have multiple counter directories
+                    for counter_dir in stage_name_dir.iterdir():
+                        if counter_dir.is_dir() and counter_dir.name.isdigit():
+                            stage_file = counter_dir / "stage.md"
+                            if stage_file.exists():
+                                try:
+                                    stage_data, body = read_frontmatter(stage_file)
+                                    counter = int(counter_dir.name)
+                                    # Filter out name and counter from stage_data to avoid conflicts
+                                    filtered_stage_data = {k: v for k, v in stage_data.items() if k not in ['name', 'counter']}
+                                    stage = Stage(
+                                        name=stage_name_dir.name,
+                                        parent=self,
+                                        counter=counter,
+                                        body=body,
+                                        **filtered_stage_data
+                                    )
+                                    stages.append(stage)
+                                except Exception:
+                                    # Skip corrupted stage files
+                                    continue
 
         return stages
 
     def _save_stage(self, stage: Stage) -> None:
         """Save a stage to the filesystem."""
-        stage_dir = self._get_stage_path(stage.name)
+        stage_dir = self._get_stage_path(stage.name, stage.counter)
         ensure_dir(stage_dir)
 
         stage_file = stage_dir / "stage.md"
@@ -95,7 +104,7 @@ class FSMarkdownDocument(Document):
 
     def _destroy_stage(self, stage: Stage) -> None:
         """Destroy a stage from the filesystem."""
-        stage_dir = self._get_stage_path(stage.name)
+        stage_dir = self._get_stage_path(stage.name, stage.counter)
         if stage_dir.exists():
             shutil.rmtree(stage_dir)
 
@@ -309,7 +318,7 @@ class FSMarkdownDocument(Document):
 
     def list_stage_files(self, stage: Stage) -> List[Path]:
         """List all files in a stage directory."""
-        stage_dir = self._get_stage_path(stage.name)
+        stage_dir = self._get_stage_path(stage.name, stage.counter)
         if not stage_dir.exists():
             return []
 

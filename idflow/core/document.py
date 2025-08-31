@@ -27,6 +27,7 @@ class Document(ABC):
         self._doc_refs: Optional[List[DocRef]] = None
         self._file_refs: Optional[List[FileRef]] = None
         self._body: str = kwargs.get('body', '')
+        self._dirty: bool = False  # Track if document has unsaved changes
 
         # Validate status
         if self.status not in VALID_STATUS:
@@ -40,13 +41,15 @@ class Document(ABC):
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Allow setting document attributes as object properties."""
-        if name in ['id', 'status', '_data', '_stages', '_doc_refs', '_file_refs', '_body']:
+        if name in ['id', 'status', '_data', '_stages', '_doc_refs', '_file_refs', '_body', '_dirty']:
             super().__setattr__(name, value)
         elif name == 'body':
             # Handle body separately to avoid duplication
             super().__setattr__('_body', value)
+            self._dirty = True
         else:
             self._data[name] = value
+            self._dirty = True
 
     def __getitem__(self, key: str) -> Any:
         """Allow dictionary-style access to document attributes."""
@@ -121,9 +124,29 @@ class Document(ABC):
 
     def add_stage(self, name: str, **kwargs) -> 'Stage':
         """Add a new stage to this document."""
-        stage = Stage(name=name, parent=self, **kwargs)
+        # Count existing stages with this name to determine counter
+        existing_stages = [s for s in self.stages if s.name == name]
+        counter = len(existing_stages) + 1
+
+        stage = Stage(name=name, parent=self, counter=counter, **kwargs)
         self.stages.append(stage)
+        self._dirty = True
         return stage
+
+    def get_stages(self, name: str) -> List['Stage']:
+        """Get all stages with the given name."""
+        return [s for s in self.stages if s.name == name]
+
+    def get_stage(self, name: str, counter: int = 1) -> Optional['Stage']:
+        """Get a specific stage by name and counter."""
+        for stage in self.stages:
+            if stage.name == name and stage.counter == counter:
+                return stage
+        return None
+
+    def mark_stage_dirty(self, stage: 'Stage') -> None:
+        """Mark a stage as dirty, which marks the parent document as dirty."""
+        self._dirty = True
 
     def _load_stages(self) -> List['Stage']:
         """Load stages from storage. Override in subclasses."""
@@ -172,9 +195,18 @@ class Document(ABC):
 
     # CRUD operations
     def save(self) -> None:
-        """Save the document."""
+        """Save the document and all dirty stages."""
         self.before_save()
+
+        # Save all dirty stages first
+        if self._stages:
+            for stage in self._stages:
+                if hasattr(stage, '_dirty') and stage._dirty:
+                    stage._save()
+                    stage._dirty = False
+
         self._save()
+        self._dirty = False
         self.after_save()
 
     def create(self) -> None:
@@ -235,17 +267,58 @@ class Stage(Document):
     Stages can appear multiple times within a document and have their own files and references.
     """
 
-    def __init__(self, name: str, parent: Document, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, name: str, parent: Document, counter: int = 1, **kwargs):
+        # Filter out name and counter from kwargs to avoid conflicts
+        stage_kwargs = {k: v for k, v in kwargs.items() if k not in ['name', 'counter']}
+        super().__init__(**stage_kwargs)
         self.name = name
         self.parent = parent
+        self.counter = counter
+        self._dirty = False
         self._data['name'] = name
+        self._data['counter'] = counter
         self._data['parent_id'] = parent.id
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Override __setattr__ to notify parent document of changes."""
+        if name in ['id', 'status', '_data', '_stages', '_doc_refs', '_file_refs', '_body', '_dirty', 'name', 'parent', 'counter']:
+            super().__setattr__(name, value)
+        elif name == 'body':
+            # Handle body separately to avoid duplication
+            super().__setattr__('_body', value)
+            self._dirty = True
+            if hasattr(self, 'parent') and self.parent:
+                self.parent.mark_stage_dirty(self)
+        else:
+            self._data[name] = value
+            self._dirty = True
+            if hasattr(self, 'parent') and self.parent:
+                self.parent.mark_stage_dirty(self)
 
     @property
     def stage_path(self) -> Path:
         """Get the filesystem path for this stage relative to the parent document."""
-        return self.parent._get_stage_path(self.name)
+        return self.parent._get_stage_path(self.name, self.counter)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert stage to dictionary representation, filtering out internal attributes."""
+        result = self._data.copy()
+
+        # Remove internal ORM attributes that shouldn't be serialized
+        internal_attrs = ['_doc_dir', '_doc_file', '_data_dir', '_stages', '_doc_refs', '_file_refs']
+        for attr in internal_attrs:
+            if attr in result:
+                del result[attr]
+
+        # Remove parent object reference (keep only parent_id)
+        if 'parent' in result:
+            del result['parent']
+
+        # Add the serialized references
+        result['_doc_refs'] = [ref.model_dump() for ref in self.doc_refs]
+        result['_file_refs'] = [ref.model_dump() for ref in self.file_refs]
+
+        return result
 
     def _load_stages(self) -> List['Stage']:
         """Stages don't have sub-stages, so return empty list."""
