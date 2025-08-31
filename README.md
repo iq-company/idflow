@@ -438,7 +438,7 @@ uuid/                             # Doc-ID
 ├─ doc.md                         # main parameters of the doc
 └─ stages/                        # Stages will be located below this folder
    └─ research_for_blog_post/     # Stage Name
-      └─ uuid/                    # uuid for the stage instance
+      └─ counter/                 # counter for the stage instance (1, 2, 3, ...)
          |─ stage.md              # main parameters of the current stage instance
          └─ researchers/          # Tasks from Category `Researchers`
             |─ deep-research-mit/ # task 1, scheduled in this stage
