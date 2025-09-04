@@ -13,6 +13,13 @@ config_dir: "config"
 #   - "database": Database-based storage (future implementation)
 document_implementation: "fs_markdown"
 
+# Conductor workflow engine configuration
+conductor:
+  # Conductor server URL
+  server_url: "http://localhost:8080"
+  # Environment variable name for API key (fallback: CONDUCTOR_API_KEY)
+  api_key_env_var: "CONDUCTOR_API_KEY"
+
 # Additional configuration options can be added here
 # For example, database connection settings when using database implementation
 # database:

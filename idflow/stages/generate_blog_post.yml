@@ -1,0 +1,25 @@
+name: generate_blog_post
+active: true # optional, true by default (option for being disabled)
+multiple_callable: false # optional, false by default (allows rerunning completed stages)
+workflows:
+  - name: generate_blog_post
+    # version: 1 # opt. a specific version of a workflow
+    when: "doc.tags.includes('blog_post_ideas')"
+    # inputs:
+    #   ocr_model: "type1"
+# Defines requirements/prerequisites, which have to be met before this stage can be entered
+# If another Stage needs to have been started before this Stage may be run, this other Stage
+# can be *scheduled* or *started* by scheduling this Stage: If a Stage cannot be started due
+# to unsolved requirements, it is entered in Status *scheduled*. It's *started* if, or as soon
+# as the requirements are fulfilled.
+# If a Stage was already *started* (fulfilled requirements), but wasn't processed until *completed*
+# or *blocked*, was reached, its Status will be changed to *cancelled*, if the requirements doesn't
+# fit anymore.
+requirements:
+  file_presence:
+    key: upload_file
+    count: 1
+    count_operator: '>='
+  stages:
+    other_stage_name:
+      status: started

@@ -23,7 +23,11 @@ class Config:
         self._config = {
             "base_dir": "data",
             "config_dir": "config",
-            "document_implementation": "fs_markdown"
+            "document_implementation": "fs_markdown",
+            "conductor": {
+                "server_url": "http://localhost:8080",
+                "api_key_env_var": "CONDUCTOR_API_KEY"
+            }
         }
 
         # Try to load from config file (either default or from IDFLOW_CONFIG env var)
@@ -95,6 +99,16 @@ class Config:
     def document_implementation(self) -> str:
         """Get the document implementation to use."""
         return self._config["document_implementation"]
+
+    @property
+    def conductor_server_url(self) -> str:
+        """Get the Conductor server URL."""
+        return self._config.get("conductor", {}).get("server_url")
+
+    @property
+    def conductor_api_key_env_var(self) -> str:
+        """Get the environment variable name for the Conductor API key."""
+        return self._config.get("conductor", {}).get("api_key_env_var")
 
     def get(self, key: str, default=None):
         """Get a configuration value."""

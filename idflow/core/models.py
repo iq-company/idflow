@@ -14,3 +14,6 @@ class FileRef(BaseModel):
 
 VALID_STATUS = {"inbox","active","done","blocked","archived"}
 
+# Stage-specific statuses (different from Document statuses)
+VALID_STAGE_STATUS = {"scheduled", "active", "done", "blocked", "cancelled"}
+

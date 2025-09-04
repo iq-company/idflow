@@ -131,8 +131,12 @@ myproject/
 │  ├─ active/      # Doc State: Active - Contains Docs in this state (further Actions expected)
 │  ├─ done/        # Doc State: Done - Contains Docs in this state (no further expected Actions)
 │  ├─ blocked/     # Doc State: Blocked - Contains Docs in this state (any flow considered to stop process)
-│  |─ archived/    # Doc State: Archived - Contains Docs in this state (not relevant anymore)
+│  ├─ archived/    # Doc State: Archived - Contains Docs in this state (not relevant anymore)
 │  └─ .../
+├─ idflow/         # Extensions
+|  ├─ workflows/   # Workflow definitions
+|  ├─ stages/      # Stage definitions
+|  └─ tasks/       # Tasks (Workflow Pieces)
 ```
 
 Refer to **`Configuration`** for further Details.
@@ -282,13 +286,16 @@ A Documents' Status is typically changed to done from another application layer,
 
 **Flow Overview (example, may be configured completely different):**
 - **Gather**: Collect documents from various sources (RSS, YouTube, manual input)
-- **Enrich**: Add metadata, deduplicate, rank, and enhance content
-- **Generate**: Create new content pieces (blog posts, social media, newsletters)
+- **Enrich**: Many several enrich options, like Adding metadata, deduplication, ranking,  enhancing content, ...
+- **Generate**: Create new content pieces as outputs (like blog posts, social media, newsletters)
 - **Publish**: Distribute content through various channels (APIs, databases, etc.)
 
 ---
 
 ## Configuration
+
+TODO:
+
 
 ---
 
@@ -303,28 +310,20 @@ Each Stage may be invoked in different ways:
 
 ### Stage Definition
 
-A Stage Definition consists of a name with several settings.
+A Stage Definition consists of a name with several settings to declare dependencies and schedulable workflows.
+They rely in ./stages/ project directory, and are all loaded and merged.
+So if two stages have the same name, they will be merged, which can lead to unexpected behaviour.
 
 `**stage-name.yml**`
 ```yaml
 name: stage-name
-# The following states are the core States for all Stage Definitions, but may be extended for each Definition if set.
-states:
-  - scheduled
-  - started
-  - completed
-  - blocked
-  - cancelled
-# Defines doc conditions/criteria for automated triggers to entry, process, or leave the Stage for a Document
-trigger:
-  to_status:
-    started:
-      property_list_item_added:
-        tag: invoice
-      stages:
-        other_stage_name:
-          status: started
-  timer: # TODO: e.g. for Collectors, which could rely on "generic Scheduler Document". To invoke some Stages each interval.
+active: true # optional, true by default (option for being disabled)
+workflows:
+  - name: wf_name
+    # version: 1 # opt. a specific version of a workflow
+    when: "doc.tags.includes('invoices')"
+    # inputs:
+    #   ocr_model: "type1"
 # Defines requirements/prerequisites, which have to be met before this stage can be entered
 # If another Stage needs to have been started before this Stage may be run, this other Stage
 # can be *scheduled* or *started* by scheduling this Stage: If a Stage cannot be started due
@@ -344,7 +343,7 @@ requirements:
 # By default each stage may only be entered one single time for each Document.
 # If there are use-cases for multiple calls, the ability of multi calls can be set here.
 # When set to true, each run will be created in a single folder (with a uuid) within the Stage:
-multiple_callable: false
+# multiple_callable: false
 ```
 
 ## Tasks and Task Categories

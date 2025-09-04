@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 from uuid import uuid4
 
-from .models import DocRef, FileRef, VALID_STATUS
+from .models import DocRef, FileRef, VALID_STATUS, VALID_STAGE_STATUS
 
 T = TypeVar('T', bound='Document')
 
@@ -29,7 +29,11 @@ class Document(ABC):
         self._body: str = kwargs.get('body', '')
         self._dirty: bool = False  # Track if document has unsaved changes
 
-        # Validate status
+        # Validate status - will be overridden in subclasses
+        self._validate_status()
+
+    def _validate_status(self) -> None:
+        """Validate the document status. Override in subclasses for custom validation."""
         if self.status not in VALID_STATUS:
             raise ValueError(f"Invalid status: {self.status}. Must be one of {VALID_STATUS}")
 
@@ -128,6 +132,10 @@ class Document(ABC):
         existing_stages = [s for s in self.stages if s.name == name]
         counter = len(existing_stages) + 1
 
+        # Set default status to "scheduled" for new stages
+        if 'status' not in kwargs:
+            kwargs['status'] = 'scheduled'
+
         stage = Stage(name=name, parent=self, counter=counter, **kwargs)
         self.stages.append(stage)
         self._dirty = True
@@ -175,7 +183,7 @@ class Document(ABC):
 
     def after_save(self) -> None:
         """Called after saving the document. Override in subclasses."""
-        pass
+        self._handle_stage_lifecycle()
 
     def before_create(self) -> None:
         """Called before creating the document. Override in subclasses."""
@@ -187,7 +195,7 @@ class Document(ABC):
 
     def before_destroy(self) -> None:
         """Called before destroying the document. Override in subclasses."""
-        pass
+        self._cancel_all_stages()
 
     def after_destroy(self) -> None:
         """Called after destroying the document. Override in subclasses."""
@@ -259,6 +267,52 @@ class Document(ABC):
         """Internal where implementation. Override in subclasses."""
         pass
 
+    def _handle_stage_lifecycle(self) -> None:
+        """Handle stage lifecycle based on document status changes."""
+        # Get all stages in scheduled or active status
+        active_stages = [s for s in self.stages if s.status in {"scheduled", "active"}]
+
+        if not active_stages:
+            return
+
+        # Handle different document statuses
+        if self.status == "inbox":
+            # Nothing to do for inbox status
+            return
+
+        elif self.status in {"done", "blocked", "archived"}:
+            # Document is in final state - cancel or complete stages
+            for stage in active_stages:
+                if stage.status == "scheduled":
+                    stage.status = "cancelled"
+                elif stage.status == "active":
+                    # Map document status to stage status
+                    if self.status == "done":
+                        stage.status = "done"
+                    elif self.status == "blocked":
+                        stage.status = "blocked"
+                    else:  # archived
+                        stage.status = "cancelled"
+
+        elif self.status == "active":
+            # Document is active - check requirements for stages
+            for stage in active_stages:
+                if stage.status == "scheduled":
+                    # Check if requirements are met to activate
+                    if stage.check_requirements():
+                        stage.status = "active"
+                        stage.trigger_workflows()
+                elif stage.status == "active":
+                    # Check if requirements are still met
+                    if not stage.check_requirements():
+                        stage.status = "cancelled"
+
+    def _cancel_all_stages(self) -> None:
+        """Cancel all scheduled and active stages before document destruction."""
+        active_stages = [s for s in self.stages if s.status in {"scheduled", "active"}]
+        for stage in active_stages:
+            stage.status = "cancelled"
+
 
 class Stage(Document):
     """
@@ -278,6 +332,15 @@ class Stage(Document):
         self._data['name'] = name
         self._data['counter'] = counter
         self._data['parent_id'] = parent.id
+
+        # Load stage definition
+        self._stage_definition = None
+        self._load_stage_definition()
+
+    def _validate_status(self) -> None:
+        """Validate the stage status using stage-specific valid statuses."""
+        if self.status not in VALID_STAGE_STATUS:
+            raise ValueError(f"Invalid stage status: {self.status}. Must be one of {VALID_STAGE_STATUS}")
 
     def __setattr__(self, name: str, value: Any) -> None:
         """Override __setattr__ to notify parent document of changes."""
@@ -345,3 +408,50 @@ class Stage(Document):
     def _where(cls, **filters) -> List['Stage']:
         """Find stages by filters - not implemented for stages."""
         raise NotImplementedError("Stages cannot be queried independently")
+
+    def _load_stage_definition(self) -> None:
+        """Load the stage definition for this stage."""
+        try:
+            from .stage_definitions import get_stage_definitions
+            stage_definitions = get_stage_definitions()
+            self._stage_definition = stage_definitions.get_definition(self.name)
+        except Exception:
+            # If stage definitions can't be loaded, set to None
+            self._stage_definition = None
+
+    @property
+    def stage_definition(self):
+        """Get the stage definition for this stage."""
+        return self._stage_definition
+
+    def check_requirements(self) -> bool:
+        """Check if the requirements for this stage are met."""
+        if not self._stage_definition:
+            return True
+        return self._stage_definition.check_requirements(self.parent)
+
+    def trigger_workflows(self, conductor_client=None) -> List[str]:
+        """Trigger the configured workflows for this stage."""
+        if not self._stage_definition:
+            return []
+        return self._stage_definition.trigger_workflows(self.parent, self.counter, conductor_client)
+
+    def before_save(self) -> None:
+        """Called before saving the stage."""
+        super().before_save()
+
+        # Only process if stage definition exists and status is not final
+        if not self._stage_definition or self.status in {"done", "blocked", "cancelled", "archived"}:
+            return
+
+        # Check requirements and update status accordingly
+        requirements_met = self.check_requirements()
+
+        if requirements_met and self.status == "scheduled":
+            # Requirements are met and stage is scheduled -> activate
+            self.status = "active"
+            # Trigger workflows
+            self.trigger_workflows()
+        elif not requirements_met and self.status == "active":
+            # Requirements no longer met and stage is active -> cancel
+            self.status = "cancelled"

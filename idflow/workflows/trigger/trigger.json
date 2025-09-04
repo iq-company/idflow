@@ -1,0 +1,79 @@
+{
+  "name": "trigger_stage_wf_v2",
+  "version": 1,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "target",
+    "rule",
+    "inputTemplate",
+    "correlationId"
+  ],
+  "tasks": [
+    {
+      "name": "await_and_check",
+      "taskReferenceName": "gate",
+      "type": "DO_WHILE",
+      "loopOver": [
+        {
+          "name": "await_signal",
+          "taskReferenceName": "await",
+          "type": "WAIT",
+          "inputParameters": {}
+        },
+        {
+          "name": "inline_check_and_build",
+          "taskReferenceName": "check",
+          "type": "INLINE",
+          "inputParameters": {
+            "evaluatorType": "javascript",
+            "doc": "${await.output.doc}",
+            "reason": "${await.output.reason}",
+            "rule": "${workflow.input.rule}",
+            "inputTemplate": "${workflow.input.inputTemplate}",
+            "expression": "(function(){\n  // doc + rule kommen aus Input\n  var doc = $.doc;\n  var ok = false;\n  try {\n    // Die Regel darf 'doc' referenzieren, z.B. doc.status === 'ready'\n    ok = !!(function(doc){ return eval($.rule); })(doc);\n  } catch(e) { ok = false; }\n  // optional: Inputs für den Ziel-Workflow aus Template bauen\n  var builtInputs = Object.assign({}, $.inputTemplate || {}, { docId: doc && doc.id });\n  return { ready: ok, reason: $.reason || 'ready', inputs: builtInputs, doc: doc };\n})()"
+          }
+        }
+      ],
+      "loopCondition": "(function(){\n  // solange NICHT ready und NICHT cancel => weiter warten\n  var r = $.check.output.result;\n  return !(r.ready === true || r.reason === 'cancel');\n})()"
+    },
+
+    {
+      "name": "route_after_loop",
+      "taskReferenceName": "route",
+      "type": "SWITCH",
+      "inputParameters": {
+        "evaluatorType": "value-param",
+        "caseValueParam": "check.output.result.reason"
+      },
+      "decisionCases": {
+        "cancel": [
+          {
+            "type": "TERMINATE",
+            "name": "cancel",
+            "taskReferenceName": "cancel",
+            "inputParameters": { "terminationStatus": "CANCELED" }
+          }
+        ]
+      },
+      "defaultCase": [
+        {
+          "type": "SUB_WORKFLOW",
+          "name": "run_target",
+          "taskReferenceName": "run",
+          "subWorkflowParam": {
+            "name": "${workflow.input.target.name}",
+            "version": "${workflow.input.target.version}"
+          },
+          "inputParameters": "${check.output.result.inputs}"
+        }
+      ]
+    }
+  ],
+  "outputParameters": {
+    "finalReason": "${check.output.result.reason}",
+    "ready": "${check.output.result.ready}",
+    "targetOutput": "${run.output}"
+  }
+}
+

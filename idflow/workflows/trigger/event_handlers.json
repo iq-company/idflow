@@ -1,0 +1,23 @@
+[
+  {
+    "name": "on_doc_changed__wake_trigger",
+    "description": "Weckt wartende Trigger-WAITs für ein Doc/Target",
+    "event": "idflow:doc.changed",
+    "evaluatorType": "javascript",
+    "condition": "function ok(){ return !!($.workflowId && $.taskRefName && $.doc); } ok();",
+    "actions": [
+      {
+        "action": "complete_task",
+        "complete_task": {
+          "workflowId": "${workflowId}",
+          "taskRefName": "${taskRefName}",
+          "output": {
+            "reason": "${reason}",
+            "doc": "${doc}"
+          }
+        }
+      }
+    ],
+    "active": true
+  }
+]
