@@ -19,5 +19,48 @@
       }
     ],
     "active": true
+  },
+  {
+    "name": "on_stage_completed__wake_trigger",
+    "description": "Weckt wartende Trigger-WAITs wenn eine Stage abgeschlossen wird",
+    "event": "idflow:stage.completed",
+    "evaluatorType": "javascript",
+    "condition": "function ok(){ return !!($.workflowId && $.taskRefName && $.doc && $.stage); } ok();",
+    "actions": [
+      {
+        "action": "complete_task",
+        "complete_task": {
+          "workflowId": "${workflowId}",
+          "taskRefName": "${taskRefName}",
+          "output": {
+            "reason": "stage_completed",
+            "doc": "${doc}",
+            "stage": "${stage}"
+          }
+        }
+      }
+    ],
+    "active": true
+  },
+  {
+    "name": "on_workflow_completed__stage_eval",
+    "description": "Löst Stage-Evaluation aus wenn ein Workflow abgeschlossen wird",
+    "event": "idflow:workflow.completed",
+    "evaluatorType": "javascript",
+    "condition": "function ok(){ return !!($.workflowId && $.docId); } ok();",
+    "actions": [
+      {
+        "action": "start_workflow",
+        "start_workflow": {
+          "name": "stage_evaluation_trigger",
+          "version": 1,
+          "input": {
+            "docId": "${docId}",
+            "triggered_by": "${workflowId}"
+          }
+        }
+      }
+    ],
+    "active": true
   }
 ]

@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-idflow = "idflow.app:run"
+idflow = "idflow.__main__:app"
 
 [tool.setuptools.packages.find]
 where = ["."]

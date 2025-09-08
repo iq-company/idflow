@@ -17,5 +17,9 @@ app.add_typer(vendor_app, name="vendor")
 from idflow.cli.stage import app as stage_app
 app.add_typer(stage_app, name="stage")
 
+# Import the CLI worker commands
+from idflow.cli.worker.worker import app as worker_app
+app.add_typer(worker_app, name="worker")
+
 if __name__ == "__main__":
     app()

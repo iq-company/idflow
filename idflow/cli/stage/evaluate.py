@@ -103,7 +103,16 @@ def evaluate(
                 new_stage = doc.add_stage(stage_name, status="active")
                 has_stages = True  # Mark that document now has stages
 
-                typer.echo(f"  {stage_name}: STARTED - requirements met (stage ID: {new_stage.id})")
+                # Trigger workflows for this stage
+                try:
+                    triggered_workflows = stage_def.trigger_workflows(doc)
+                    if triggered_workflows:
+                        typer.echo(f"  {stage_name}: STARTED - requirements met (stage ID: {new_stage.id}) - {len(triggered_workflows)} workflows triggered")
+                    else:
+                        typer.echo(f"  {stage_name}: STARTED - requirements met (stage ID: {new_stage.id}) - no workflows triggered")
+                except Exception as e:
+                    typer.echo(f"  {stage_name}: STARTED - requirements met (stage ID: {new_stage.id}) - workflow trigger failed: {e}")
+
                 stages_started += 1
             else:
                 typer.echo(f"  {stage_name}: SKIPPED - requirements not met")

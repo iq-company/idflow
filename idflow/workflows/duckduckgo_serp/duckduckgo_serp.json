@@ -1,0 +1,44 @@
+{
+  "name": "duckduckgo_serp",
+  "version": 1,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "query",
+    "docId"
+  ],
+  "tasks": [
+    {
+      "name": "duckduckgo_search",
+      "taskReferenceName": "search",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "query": "${workflow.input.query}",
+        "docId": "${workflow.input.docId}"
+      }
+    },
+    {
+      "name": "crawl_results",
+      "taskReferenceName": "crawl",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "search_results": "${search.output}",
+        "docId": "${workflow.input.docId}"
+      }
+    },
+    {
+      "name": "format_serp_results",
+      "taskReferenceName": "format_results",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "search_data": "${search.output}",
+        "crawl_data": "${crawl.output}",
+        "query": "${workflow.input.query}",
+        "expression": "(function(){\n  var searchData = $.search_data || {};\n  var crawlData = $.crawl_data || {};\n  return {\n    method: 'duckduckgo_serp',\n    query: $.query,\n    search_results: searchData,\n    crawled_content: crawlData,\n    summary: 'DuckDuckGo SERP and crawling completed',\n    timestamp: new Date().toISOString()\n  };\n})()"
+      }
+    }
+  ],
+  "outputParameters": {
+    "results": "${format_results.output.result}"
+  }
+}

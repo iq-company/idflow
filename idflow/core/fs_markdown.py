@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import uuid4
 
 from .document import Document, Stage
+from .models import FileRef
 from .io import ensure_dir, write_frontmatter, read_frontmatter
 from .repo import find_doc_dir
 from .config import config
@@ -73,8 +74,8 @@ class FSMarkdownDocument(Document):
                                 try:
                                     stage_data, body = read_frontmatter(stage_file)
                                     counter = int(counter_dir.name)
-                                    # Filter out name and counter from stage_data to avoid conflicts
-                                    filtered_stage_data = {k: v for k, v in stage_data.items() if k not in ['name', 'counter']}
+                                    # Filter out name, counter, and body from stage_data to avoid conflicts
+                                    filtered_stage_data = {k: v for k, v in stage_data.items() if k not in ['name', 'counter', 'body']}
                                     stage = Stage(
                                         name=stage_name_dir.name,
                                         parent=self,
@@ -288,6 +289,9 @@ class FSMarkdownDocument(Document):
         """Copy a file to the document directory and create a file reference."""
         if not src_path.exists() or not src_path.is_file():
             raise FileNotFoundError(f"Source file not found: {src_path}")
+
+        # Ensure document directory exists
+        self.doc_dir.mkdir(parents=True, exist_ok=True)
 
         file_uuid = str(uuid4())
         dst_path = self.doc_dir / file_uuid

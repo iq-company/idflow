@@ -1,0 +1,83 @@
+{
+  "name": "stage_workflow",
+  "version": 13,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "stageName",
+    "stageCounter",
+    "workflows"
+  ],
+  "tasks": [
+    {
+      "name": "execute_workflows",
+      "taskReferenceName": "execute",
+      "type": "FORK_JOIN",
+      "forkTasks": [
+        [
+          {
+            "name": "sub_workflow_1",
+            "taskReferenceName": "sub1",
+            "type": "SUB_WORKFLOW",
+                  "subWorkflowParam": {
+                    "name": "sub_workflow_1",
+                    "version": 2
+                  },
+            "inputParameters": {
+              "docId": "${workflow.input.docId}",
+              "stageName": "${workflow.input.stageName}",
+              "stageCounter": "${workflow.input.stageCounter}"
+            }
+          }
+        ],
+        [
+          {
+            "name": "sub_workflow_2",
+            "taskReferenceName": "sub2",
+            "type": "SUB_WORKFLOW",
+                  "subWorkflowParam": {
+                    "name": "sub_workflow_2",
+                    "version": 2
+                  },
+            "inputParameters": {
+              "docId": "${workflow.input.docId}",
+              "stageName": "${workflow.input.stageName}",
+              "stageCounter": "${workflow.input.stageCounter}"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "join_workflows",
+      "taskReferenceName": "join_workflows",
+      "type": "JOIN",
+      "joinOn": ["sub1", "sub2"]
+    },
+    {
+      "name": "update_stage_status",
+      "taskReferenceName": "update_status",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "docId": "${workflow.input.docId}",
+        "stageName": "${workflow.input.stageName}",
+        "stageCounter": "${workflow.input.stageCounter}",
+        "status": "done"
+      },
+      "taskDefinition": {
+        "name": "update_stage_status",
+        "version": 1,
+        "ownerEmail": "idflow@example.com",
+        "timeoutSeconds": 60,
+        "responseTimeoutSeconds": 30
+      }
+    }
+  ],
+  "outputParameters": {
+    "docId": "${workflow.input.docId}",
+    "stageName": "${workflow.input.stageName}",
+    "stageCounter": "${workflow.input.stageCounter}",
+    "completed": true
+  },
+  "ownerEmail": "idflow@example.com"
+}

@@ -1,0 +1,28 @@
+{
+  "name": "sub_workflow_2",
+  "version": 2,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "stageName",
+    "stageCounter"
+  ],
+  "tasks": [
+    {
+      "name": "NOOP",
+      "taskReferenceName": "noop2",
+      "type": "NOOP",
+      "inputParameters": {
+        "message": "Sub-workflow 2 executed"
+      }
+    }
+  ],
+  "outputParameters": {
+    "docId": "${workflow.input.docId}",
+    "stageName": "${workflow.input.stageName}",
+    "stageCounter": "${workflow.input.stageCounter}",
+    "subWorkflow": "sub_workflow_2",
+    "status": "completed"
+  },
+  "ownerEmail": "idflow@example.com"
+}

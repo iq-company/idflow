@@ -132,13 +132,27 @@ class Document(ABC):
         existing_stages = [s for s in self.stages if s.name == name]
         counter = len(existing_stages) + 1
 
-        # Set default status to "scheduled" for new stages
-        if 'status' not in kwargs:
-            kwargs['status'] = 'scheduled'
-
+        # Create stage first
         stage = Stage(name=name, parent=self, counter=counter, **kwargs)
+
+        # Check requirements if no explicit status provided
+        if 'status' not in kwargs:
+            from .stage_definitions import get_stage_definitions
+            stage_definitions = get_stage_definitions()
+            stage_def = stage_definitions.get_definition(name)
+
+            if stage_def and stage_def.check_requirements(self):
+                stage.status = 'active'
+            else:
+                stage.status = 'scheduled'
+
         self.stages.append(stage)
         self._dirty = True
+
+        # Update document status to "active" if it was "inbox" and has stages
+        if self.status == "inbox" and len(self.stages) > 0:
+            self.status = "active"
+
         return stage
 
     def get_stages(self, name: str) -> List['Stage']:
@@ -149,6 +163,13 @@ class Document(ABC):
         """Get a specific stage by name and counter."""
         for stage in self.stages:
             if stage.name == name and stage.counter == counter:
+                return stage
+        return None
+
+    def get_stage_by_id(self, stage_id: str) -> Optional['Stage']:
+        """Get a specific stage by its ID."""
+        for stage in self.stages:
+            if stage.id == stage_id:
                 return stage
         return None
 
@@ -324,6 +345,11 @@ class Stage(Document):
     def __init__(self, name: str, parent: Document, counter: int = 1, **kwargs):
         # Filter out name and counter from kwargs to avoid conflicts
         stage_kwargs = {k: v for k, v in kwargs.items() if k not in ['name', 'counter']}
+
+        # Set default status for stages if not provided
+        if 'status' not in stage_kwargs:
+            stage_kwargs['status'] = 'scheduled'
+
         super().__init__(**stage_kwargs)
         self.name = name
         self.parent = parent
@@ -342,10 +368,31 @@ class Stage(Document):
         if self.status not in VALID_STAGE_STATUS:
             raise ValueError(f"Invalid stage status: {self.status}. Must be one of {VALID_STAGE_STATUS}")
 
+    def set_status(self, status: str) -> None:
+        """Set the stage status and mark as dirty."""
+        super().__setattr__('status', status)
+        super().__setattr__('_dirty', True)
+        if hasattr(self, 'parent') and self.parent:
+            self.parent.mark_stage_dirty(self)
+
     def __setattr__(self, name: str, value: Any) -> None:
         """Override __setattr__ to notify parent document of changes."""
-        if name in ['id', 'status', '_data', '_stages', '_doc_refs', '_file_refs', '_body', '_dirty', 'name', 'parent', 'counter']:
+        if name in ['id', '_data', '_stages', '_doc_refs', '_file_refs', '_body', '_dirty', 'name', 'parent', 'counter']:
             super().__setattr__(name, value)
+        elif name == 'status':
+            # Handle status separately to mark as dirty and update _data
+            super().__setattr__(name, value)
+            # Also update _data so to_dict() returns the correct status
+            try:
+                if self._data:
+                    self._data['status'] = value
+                    # Only mark as dirty after initialization is complete and parent exists
+                    if hasattr(self, 'parent') and self.parent:
+                        super().__setattr__('_dirty', True)
+                        self.parent.mark_stage_dirty(self)
+            except (AttributeError, RecursionError):
+                # During initialization, attributes may not be available yet
+                pass
         elif name == 'body':
             # Handle body separately to avoid duplication
             super().__setattr__('_body', value)
@@ -368,7 +415,7 @@ class Stage(Document):
         result = self._data.copy()
 
         # Remove internal ORM attributes that shouldn't be serialized
-        internal_attrs = ['_doc_dir', '_doc_file', '_data_dir', '_stages', '_doc_refs', '_file_refs']
+        internal_attrs = ['_doc_dir', '_doc_file', '_data_dir', '_stages', '_doc_refs', '_file_refs', '_stage_definition']
         for attr in internal_attrs:
             if attr in result:
                 del result[attr]

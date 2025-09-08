@@ -1,92 +1,117 @@
 from __future__ import annotations
 from typing import Dict, Any, Optional, List
+import requests
 import os
 
 
-class ConductorClient:
-    """Basic conductor client for workflow management."""
+def _get_conductor_config():
+    """Get Conductor configuration from config module."""
+    from .config import config
 
-    def __init__(self, server_url: Optional[str] = None, api_key: Optional[str] = None):
-        from .config import config
+    return {
+        'host': config.conductor_server_url,
+        'base_path': '/api',
+        'api_key': os.getenv(config.conductor_api_key_env_var) if hasattr(config, 'conductor_api_key_env_var') else None
+    }
 
-        # Server URL only from config (no environment override)
-        if server_url:
-            self.server_url = server_url
-        else:
-            self.server_url = config.conductor_server_url
 
-        # API key from environment variable (name configurable in config)
-        if api_key:
-            self.api_key = api_key
-        else:
-            api_key_env_var = config.conductor_api_key_env_var
-            self.api_key = os.getenv(api_key_env_var)
-        self._client = None
+def _get_base_url():
+    """Get the base URL for Conductor API calls."""
+    config = _get_conductor_config()
+    return f"{config['host']}{config['base_path']}"
 
-    def _get_client(self):
-        """Lazy initialization of the actual conductor client."""
-        if self._client is None:
-            try:
-                from conductor.client.workflow_client import WorkflowClient
-                from conductor.client.configuration.configuration import Configuration
 
-                config = Configuration()
-                config.host = self.server_url
-                if self.api_key:
-                    config.api_key["X-Authorization"] = self.api_key
+def _get_headers():
+    """Get headers for Conductor API calls."""
+    config = _get_conductor_config()
+    headers = {"Content-Type": "application/json"}
 
-                self._client = WorkflowClient(configuration=config)
-            except ImportError:
-                raise ImportError("conductor-python package not installed")
-        return self._client
+    if config['api_key']:
+        headers["Authorization"] = f"Bearer {config['api_key']}"
 
-    def start_workflow(self, name: str, version: int, input: Dict[str, Any]) -> str:
-        """Start a workflow and return the workflow ID."""
-        client = self._get_client()
+    return headers
 
-        # Start the workflow
-        workflow_id = client.start_workflow(
-            name=name,
-            version=version,
-            input=input
+
+def start_workflow(workflow_name: str, input_data: Dict[str, Any]) -> str:
+    """Start a workflow and return the workflow ID."""
+    try:
+        base_url = _get_base_url()
+        headers = _get_headers()
+
+        response = requests.post(
+            f"{base_url}/workflow/{workflow_name}",
+            json=input_data,
+            headers=headers
         )
 
-        return workflow_id
+        if response.status_code == 200:
+            return response.text.strip('"')
+        else:
+            raise Exception(f"Failed to start workflow: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"Failed to start workflow {workflow_name}: {e}")
+        raise
 
-    def get_workflow(self, workflow_id: str) -> Dict[str, Any]:
-        """Get workflow execution details."""
-        client = self._get_client()
 
-        execution = client.get_workflow(workflow_id)
-        return execution
+def get_workflow_status(workflow_id: str) -> Dict[str, Any]:
+    """Get workflow execution status."""
+    try:
+        base_url = _get_base_url()
+        headers = _get_headers()
 
-    def terminate_workflow(self, workflow_id: str, reason: str = "Terminated by user") -> None:
-        """Terminate a workflow execution."""
-        client = self._get_client()
+        response = requests.get(f"{base_url}/workflow/{workflow_id}", headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Failed to get workflow status {workflow_id}: {e}")
+        return None
 
-        client.terminate_workflow(workflow_id, reason)
 
-    def get_workflows_by_correlation_id(self, correlation_id: str, workflow_name: str = None) -> List[Dict[str, Any]]:
-        """Get workflows by correlation ID."""
-        client = self._get_client()
+def upload_workflow(workflow_definition: Dict[str, Any]) -> bool:
+    """Upload a workflow definition to Conductor."""
+    try:
+        base_url = _get_base_url()
+        headers = _get_headers()
 
-        # Use the correct conductor API method
-        workflows = client.get_by_correlation_ids(
-            workflow_name=workflow_name,
-            correlation_ids=[correlation_id],
-            include_completed=False,
-            include_tasks=False
+        workflow_name = workflow_definition.get('name', 'unknown')
+        workflow_version = workflow_definition.get('version', 1)
+
+        # First try to delete existing workflow
+        try:
+            requests.delete(
+                f"{base_url}/metadata/workflow/{workflow_name}/{workflow_version}",
+                headers=headers
+            )
+            # Ignore delete errors - workflow might not exist
+        except:
+            pass
+
+        # Upload new workflow
+        response = requests.post(
+            f"{base_url}/metadata/workflow",
+            json=workflow_definition,
+            headers=headers
         )
 
-        return workflows
+        if response.status_code != 200:
+            print(f"Workflow upload failed for {workflow_name}: {response.status_code} - {response.text}")
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Failed to upload workflow {workflow_definition.get('name', 'unknown')}: {e}")
+        return False
 
 
-# Global instance
-_conductor_client: Optional[ConductorClient] = None
+def search_workflows(size: int = 10) -> List[Dict[str, Any]]:
+    """Search for workflows."""
+    try:
+        base_url = _get_base_url()
+        headers = _get_headers()
 
-def get_conductor_client() -> ConductorClient:
-    """Get the global conductor client instance."""
-    global _conductor_client
-    if _conductor_client is None:
-        _conductor_client = ConductorClient()
-    return _conductor_client
+        response = requests.get(f"{base_url}/workflow/search?size={size}", headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('results', [])
+    except Exception as e:
+        print(f"Failed to search workflows: {e}")
+        return []

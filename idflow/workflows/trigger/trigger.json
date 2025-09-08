@@ -46,13 +46,15 @@
         "evaluatorType": "value-param",
         "caseValueParam": "check.output.result.reason"
       },
+      "evaluatorType": "value-param",
+      "expression": "${workflow.input.rule}",
       "decisionCases": {
         "cancel": [
           {
             "type": "TERMINATE",
             "name": "cancel",
             "taskReferenceName": "cancel",
-            "inputParameters": { "terminationStatus": "CANCELED" }
+            "inputParameters": { "terminationStatus": "FAILED" }
           }
         ]
       },
@@ -63,9 +65,12 @@
           "taskReferenceName": "run",
           "subWorkflowParam": {
             "name": "${workflow.input.target.name}",
-            "version": "${workflow.input.target.version}"
+            "version": 1
           },
-          "inputParameters": "${check.output.result.inputs}"
+          "inputParameters": {
+            "docId": "${check.output.result.inputs.docId}",
+            "research_methods": "${check.output.result.inputs.research_methods}"
+          }
         }
       ]
     }

@@ -1,0 +1,34 @@
+{
+  "name": "stage_evaluation_trigger",
+  "version": 2,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "triggered_by"
+  ],
+  "tasks": [
+    {
+      "name": "evaluate_stages",
+      "taskReferenceName": "evaluate",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "docId": "${workflow.input.docId}",
+        "triggered_by": "${workflow.input.triggered_by}"
+      },
+      "taskDefinition": {
+        "name": "stage_evaluation",
+        "version": 1,
+        "ownerEmail": "idflow@example.com",
+        "timeoutSeconds": 300,
+        "responseTimeoutSeconds": 60
+      }
+    }
+  ],
+  "outputParameters": {
+    "evaluationResult": "${evaluate.output.result}",
+    "docId": "${workflow.input.docId}",
+    "success": "${evaluate.output.result.success}",
+    "stagesStarted": "${evaluate.output.result.stages_started}"
+  },
+  "ownerEmail": "idflow@example.com"
+}

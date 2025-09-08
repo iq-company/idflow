@@ -1,4 +1,4 @@
-# bakeconductor
+# baker-cli
 
 Ein kleines, pragmatisches Python-CLI, das deine Docker-Build-Kaskaden **einheitlich lokal und im CI** steuert:
 
@@ -44,13 +44,13 @@ Ein kleines, pragmatisches Python-CLI, das deine Docker-Build-Kaskaden **einheit
 pip install pyyaml
 
 # 2) Plan anzeigen (lokal prüfen, ohne Push)
-python bakeconductor.py plan --settings build-settings.yml --check local --push=off --targets cascade-base
+python baker.py --settings build-settings.yml plan --check local --push=off --targets cascade-base
 
 # 3) Bauen (lokal, ohne Push)
-python bakeconductor.py build --settings build-settings.yml --check local --push=off --targets cascade-base
+python baker.py --settings build-settings.yml build --check local --push=off --targets cascade-base
 
 # 4) Optional: HCL generieren
-python bakeconductor.py gen-hcl --settings build-settings.yml -o docker-bake.hcl
+python baker.py --settings build-settings.yml gen-hcl -o docker-bake.hcl
 ```
 
 ---
@@ -71,7 +71,7 @@ python bakeconductor.py gen-hcl --settings build-settings.yml -o docker-bake.hcl
 
 ```
 .
-├─ bakeconductor.py
+├─ baker.py
 ├─ build-settings.yml
 └─ conductor/
    ├─ Dockerfile.base
@@ -213,7 +213,7 @@ tag: ${depChecksum("builder-ui")}-${currentChecksum()}
 ## CLI
 
 ```text
-usage: bakeconductor.py [--settings build-settings.yml] [--set key=VAL] {plan,gen-hcl,build} [...]
+usage: baker.py [--settings build-settings.yml] [--set key=VAL] {plan,gen-hcl,build} [...]
 ```
 
 ### `plan`
@@ -221,8 +221,9 @@ usage: bakeconductor.py [--settings build-settings.yml] [--set key=VAL] {plan,ge
 Zeigt Entscheidung (bauen/skip), Tags und Referenzen. Baut nichts.
 
 ```bash
-python bakeconductor.py plan \
+python baker.py \
   --settings build-settings.yml \
+  plan \
   --targets cascade-base \
   --check remote \
   --print-env
@@ -244,7 +245,7 @@ Nützliche Flags:
 Erzeugt ein `docker-bake.hcl` basierend auf Settings + berechneten Tags.
 
 ```bash
-python bakeconductor.py gen-hcl --settings build-settings.yml -o docker-bake.hcl --targets cascade-base
+python baker.py --settings build-settings.yml gen-hcl -o docker-bake.hcl --targets cascade-base
 ```
 
 ### `build`
@@ -252,8 +253,9 @@ python bakeconductor.py gen-hcl --settings build-settings.yml -o docker-bake.hcl
 Baut (und optional pusht) nur die Targets, die laut Plan nötig sind.
 
 ```bash
-python bakeconductor.py build \
+python baker.py \
   --settings build-settings.yml \
+  build \
   --targets cascade-base \
   --check remote \
   --push
@@ -317,7 +319,7 @@ on:
     paths:
       - conductor/**/Dockerfile*
       - build-settings.yml
-      - bakeconductor.py
+      - baker.py
 
 permissions:
   contents: read
@@ -347,16 +349,18 @@ jobs:
 
       - name: Plan (remote check)
         run: |
-          python bakeconductor.py plan \
+          python baker.py \
             --settings build-settings.yml \
+            plan \
             --set check=remote \
             --targets cascade-base \
             --print-env
 
       - name: Build & Push (nur wenn nötig)
         run: |
-          python bakeconductor.py build \
+          python baker.py \
             --settings build-settings.yml \
+            build \
             --set check=remote \
             --set push=${{ github.ref == 'refs/heads/main' }} \
             --targets cascade-base
@@ -381,7 +385,7 @@ jobs:
 
   ```bash
   # nur UI-Kette
-  python bakeconductor.py build --targets cascade-ui-builder
+  python baker.py build --targets cascade-ui-builder
   ```
 
 ---

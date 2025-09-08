@@ -1,0 +1,14 @@
+name: research_blog_post_ideas
+active: true
+multiple_callable: false
+workflows:
+  - name: research_blog_post_ideas
+    version: 1
+    when: "doc.tags && doc.tags.includes('blog_post_ideas')"
+    inputs:
+      research_methods: ["gpt_researcher", "duckduckgo_serp"]
+requirements:
+  file_presence:
+    key: content
+    count: 1
+    count_operator: '>='

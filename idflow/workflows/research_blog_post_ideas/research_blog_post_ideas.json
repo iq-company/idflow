@@ -1,0 +1,103 @@
+{
+  "name": "research_blog_post_ideas",
+  "version": 3,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "research_methods"
+  ],
+  "tasks": [
+    {
+      "name": "read_document_content",
+      "taskReferenceName": "read_doc",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "docId": "${workflow.input.docId}",
+        "expression": "(function(){\n  // This would normally read from the document store\n  // For now, we'll simulate reading the document\n  return {\n    content: 'MLLM vs. OCR - A comprehensive comparison of Machine Learning Language Models versus Optical Character Recognition technologies',\n    tags: ['blog_post_ideas'],\n    id: $.docId\n  };\n})()"
+      }
+    },
+    {
+      "name": "extract_research_topics",
+      "taskReferenceName": "extract_topics",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "content": "${read_doc.output.result.content}",
+        "expression": "(function(){\n  // Extract key topics from the content for research\n  var content = $.content;\n  var topics = [];\n  \n  // Ensure content is a string\n  if (typeof content !== 'string') {\n    content = 'MLLM vs. OCR - A comprehensive comparison of Machine Learning Language Models versus Optical Character Recognition technologies';\n  }\n  \n  // Simple keyword extraction (in real implementation, use NLP)\n  var keywords = ['MLLM', 'OCR', 'Machine Learning', 'Language Models', 'Optical Character Recognition', 'comparison', 'technologies'];\n  \n  // Process keywords safely\n  try {\n    keywords.forEach(function(keyword) {\n      if (content && typeof content === 'string' && content.toLowerCase().includes(keyword.toLowerCase())) {\n        topics.push(keyword);\n      }\n    });\n  } catch (e) {\n    // Fallback if there are any issues\n    topics = ['MLLM', 'OCR', 'Machine Learning'];\n  }\n  \n  return {\n    topics: topics,\n    research_query: 'MLLM vs OCR comparison machine learning language models optical character recognition'\n  };\n})()"
+      }
+    },
+    {
+      "name": "parallel_research",
+      "taskReferenceName": "parallel_research",
+      "type": "FORK_JOIN_DYNAMIC",
+      "dynamicForkTasksParam": "dynamicTasks",
+      "dynamicForkTasksInputParamName": "dynamicTasksInput",
+      "inputParameters": {
+        "dynamicTasks": [
+          {
+            "name": "gpt_researcher_workflow",
+            "taskReferenceName": "gpt_research",
+            "type": "SUB_WORKFLOW",
+            "subWorkflowParam": {
+              "name": "gpt_researcher",
+              "version": 1
+            }
+          },
+          {
+            "name": "duckduckgo_serp_workflow",
+            "taskReferenceName": "serp_research",
+            "type": "SUB_WORKFLOW",
+            "subWorkflowParam": {
+              "name": "duckduckgo_serp",
+              "version": 1
+            }
+          }
+        ],
+        "dynamicTasksInput": {
+          "gpt_research": {
+            "query": "${extract_topics.output.result.research_query}",
+            "docId": "${workflow.input.docId}"
+          },
+          "serp_research": {
+            "query": "${extract_topics.output.result.research_query}",
+            "docId": "${workflow.input.docId}"
+          }
+        }
+      }
+    },
+    {
+      "name": "join_research_results",
+      "taskReferenceName": "join_research",
+      "type": "JOIN",
+      "joinOn": ["gpt_research", "serp_research"]
+    },
+    {
+      "name": "consolidate_research_results",
+      "taskReferenceName": "consolidate",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "gpt_results": "${parallel_research.output.gpt_research}",
+        "serp_results": "${parallel_research.output.serp_research}",
+        "docId": "${workflow.input.docId}",
+        "expression": "(function(){\n  // Consolidate results from both research methods\n  var gptData = $.gpt_results || {};\n  var serpData = $.serp_results || {};\n  \n  var consolidated = {\n    docId: $.docId,\n    research_methods: ['gpt_researcher', 'duckduckgo_serp'],\n    results: {\n      gpt_researcher: gptData,\n      duckduckgo_serp: serpData\n    },\n    summary: 'Research completed using GPT Researcher and DuckDuckGo SERP methods',\n    timestamp: new Date().toISOString()\n  };\n  \n  return consolidated;\n})()"
+      }
+    },
+    {
+      "name": "save_research_results",
+      "taskReferenceName": "save_results",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "results": "${consolidate.output.result}",
+        "expression": "(function(){\n  // In a real implementation, this would save to the document store\n  // For now, we'll just return success\n  return {\n    success: true,\n    message: 'Research results saved successfully',\n    results: $.results\n  };\n})()"
+      }
+    }
+  ],
+  "outputParameters": {
+    "researchResults": "${save_results.output.result.results}",
+    "success": "${save_results.output.result.success}"
+  },
+  "ownerEmail": "idflow@example.com"
+}

@@ -6,7 +6,7 @@ on:
     paths:
       - conductor/**/Dockerfile*
       - build-settings.yml
-      - bakeconductor.py
+      - baker.py
 
 permissions:
   contents: read

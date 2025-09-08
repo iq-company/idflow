@@ -1,0 +1,34 @@
+{
+  "name": "gpt_researcher",
+  "version": 1,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "query",
+    "docId"
+  ],
+  "tasks": [
+    {
+      "name": "gpt_researcher_task",
+      "taskReferenceName": "gpt_research",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "query": "${workflow.input.query}",
+        "docId": "${workflow.input.docId}"
+      }
+    },
+    {
+      "name": "format_gpt_results",
+      "taskReferenceName": "format_results",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "research_data": "${gpt_research.output}",
+        "query": "${workflow.input.query}",
+        "expression": "(function(){\n  var data = $.research_data || {};\n  return {\n    method: 'gpt_researcher',\n    query: $.query,\n    results: data,\n    summary: 'GPT Researcher analysis completed',\n    timestamp: new Date().toISOString()\n  };\n})()"
+      }
+    }
+  ],
+  "outputParameters": {
+    "results": "${format_results.output.result}"
+  }
+}

@@ -88,45 +88,109 @@ class StageDefinition(BaseModel):
 
     def trigger_workflows(self, doc, stage_counter: int = 1, conductor_client=None) -> List[str]:
         """Trigger the configured workflows for this stage."""
+        from .conductor_client import start_workflow, search_workflows
+
+        # Ensure workflows are uploaded before triggering
+        self._ensure_workflows_uploaded()
+
+        triggered_workflows = []
+
+        # Create unique correlation ID with stage counter
+        correlation_id = f"{doc.id}-{self.name}-{stage_counter}"
+
+        # Check if stage workflow is already running with this correlation ID
+        try:
+            existing_workflows = search_workflows(size=100)
+            running_workflows = [w for w in existing_workflows
+                               if w.get('correlationId') == correlation_id
+                               and w.get('workflowType') == 'stage_workflow']
+            if running_workflows:
+                return triggered_workflows
+        except Exception:
+            # If check fails, continue with starting the workflow
+            pass
+
+        # Start the stage workflow with all configured workflows
+        stage_workflow_input = {
+            "docId": doc.id,
+            "stageName": self.name,
+            "stageCounter": stage_counter,
+            "workflows": [
+                {
+                    "name": wf.name,
+                    "version": wf.version,
+                    "inputs": wf.inputs or {},
+                    "when": wf.when or "true"
+                }
+                for wf in self.workflows
+            ],
+            "correlationId": correlation_id
+        }
+
+        # Start the stage workflow
+        workflow_id = start_workflow(
+            workflow_name="stage_workflow",
+            input_data=stage_workflow_input
+        )
+        triggered_workflows.append(workflow_id)
+
+        return triggered_workflows
+
+    def _ensure_workflows_uploaded(self) -> None:
+        """Ensure all workflows for this stage are uploaded to Conductor."""
+        from .workflow_manager import get_workflow_manager
+
+        workflow_manager = get_workflow_manager()
+
+        # Upload workflows only (tasks are handled by SDK)
+        results = workflow_manager.upload_workflows(force=False)
+
+        # Check if any workflows failed
+        failed_workflows = [name for name, success in results.items() if not success]
+        if failed_workflows:
+            print(f"Warning: Failed to upload workflows: {failed_workflows}")
+
+    def mark_stage_completed(self, doc, stage_id: str, conductor_client=None) -> None:
+        """Mark a stage as completed and trigger events."""
         if not conductor_client:
             from .conductor_client import get_conductor_client
             conductor_client = get_conductor_client()
 
-        triggered_workflows = []
+        # Update stage status in document
+        stage = doc.get_stage_by_id(stage_id)
+        if stage:
+            stage.status = "done"
+            doc.save()
 
-        for workflow_config in self.workflows:
-            # Create unique correlation ID with stage counter
-            correlation_id = f"{doc.id}-{self.name}-{stage_counter}"
+            # Send stage completion event
+            self._send_stage_completion_event(doc, stage, conductor_client)
 
-            # Check if workflow is already running with this correlation ID
-            try:
-                existing_workflows = conductor_client.get_workflows_by_correlation_id(
-                    correlation_id,
-                    workflow_name=workflow_config.name
-                )
-                if existing_workflows:
-                    continue
-            except Exception:
-                # If check fails, continue with starting the workflow
-                pass
-
-            # Start the trigger workflow with this stage's configuration
-            trigger_input = {
+    def _send_stage_completion_event(self, doc, stage, conductor_client) -> None:
+        """Send stage completion event to conductor."""
+        try:
+            # In a real implementation, this would send an event to conductor
+            # For now, we'll simulate the event sending
+            event_data = {
+                "event": "idflow:stage.completed",
                 "docId": doc.id,
-                "rule": workflow_config.when or "true",
-                "inputTemplate": workflow_config.inputs or {},
-                "correlationId": correlation_id
+                "stage": {
+                    "id": stage.id,
+                    "name": stage.name,
+                    "status": stage.status
+                },
+                "doc": {
+                    "id": doc.id,
+                    "status": doc.status,
+                    "tags": doc.tags
+                }
             }
 
-            # Start the trigger workflow
-            workflow_id = conductor_client.start_workflow(
-                name= workflow_config.name,
-                version=workflow_config.version or 1,
-                input=trigger_input
-            )
-            triggered_workflows.append(workflow_id)
+            # This would be sent to conductor's event system
+            # conductor_client.send_event(event_data)
+            print(f"Stage completion event: {event_data}")
 
-        return triggered_workflows
+        except Exception as e:
+            print(f"Failed to send stage completion event: {e}")
 
 
 class StageDefinitions:

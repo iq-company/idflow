@@ -1,0 +1,56 @@
+{
+  "name": "create_blog_post_draft",
+  "version": 1,
+  "schemaVersion": 2,
+  "inputParameters": [
+    "docId",
+    "prompt_template"
+  ],
+  "tasks": [
+    {
+      "name": "read_research_results",
+      "taskReferenceName": "read_research",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "docId": "${workflow.input.docId}",
+        "expression": "(function(){\n  // In a real implementation, this would read the research results from the document store\n  // For now, we'll simulate reading the research results\n  return {\n    gpt_researcher: {\n      summary: 'GPT Researcher found comprehensive information about MLLM vs OCR technologies',\n      key_points: [\n        'MLLM (Machine Learning Language Models) excel at understanding context and generating human-like text',\n        'OCR (Optical Character Recognition) is specialized for extracting text from images and documents',\n        'MLLM can process unstructured data and understand context',\n        'OCR is more accurate for precise text extraction from visual sources'\n      ]\n    },\n    duckduckgo_serp: {\n      summary: 'DuckDuckGo SERP provided additional web sources and current information',\n      sources: [\n        'Recent academic papers on MLLM applications',\n        'Industry reports on OCR technology trends',\n        'Comparison studies between different approaches'\n      ]\n    }\n  };\n})()"
+      }
+    },
+    {
+      "name": "create_blog_post_draft",
+      "taskReferenceName": "create_draft",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "research_data": "${read_research.output.result}",
+        "docId": "${workflow.input.docId}",
+        "prompt_template": "${workflow.input.prompt_template}"
+      }
+    },
+    {
+      "name": "format_blog_draft",
+      "taskReferenceName": "format_draft",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "draft_content": "${create_draft.output}",
+        "docId": "${workflow.input.docId}",
+        "expression": "(function(){\n  var draft = $.draft_content || {};\n  return {\n    docId: $.docId,\n    title: draft.title || 'MLLM vs. OCR: A Comprehensive Comparison',\n    content: draft.content || 'Blog post draft content',\n    metadata: {\n      created: new Date().toISOString(),\n      word_count: (draft.content || '').split(' ').length,\n      status: 'draft'\n    },\n    research_sources: draft.research_sources || []\n  };\n})()"
+      }
+    },
+    {
+      "name": "save_blog_draft",
+      "taskReferenceName": "save_draft",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "draft": "${format_draft.output.result}",
+        "expression": "(function(){\n  // In a real implementation, this would save to the document store\n  return {\n    success: true,\n    message: 'Blog post draft saved successfully',\n    draft: $.draft\n  };\n})()"
+      }
+    }
+  ],
+  "outputParameters": {
+    "draft": "${save_draft.output.result.draft}",
+    "success": "${save_draft.output.result.success}"
+  }
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "name": "on_stage_workflow_completed__stage_eval",
+    "description": "Löst Stage-Evaluation aus wenn ein Stage Workflow abgeschlossen wird",
+    "event": "idflow:workflow.completed",
+    "evaluatorType": "javascript",
+    "condition": "function ok(){ return !!($.workflowId && $.workflowType === 'stage_workflow' && $.docId); } ok();",
+    "actions": [
+      {
+        "action": "start_workflow",
+        "start_workflow": {
+          "name": "stage_evaluation_trigger",
+          "version": 2,
+          "input": {
+            "docId": "${docId}",
+            "triggered_by": "${workflowId}"
+          }
+        }
+      }
+    ],
+    "active": true
+  }
+]
+
