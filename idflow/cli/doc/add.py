@@ -5,7 +5,7 @@ from typing import Optional, List, Any, Dict, Tuple
 from uuid import uuid4
 
 import typer
-from idflow.core.fs_markdown import FSMarkdownDocument
+from idflow.core.document_factory import get_document_class
 from idflow.core.config import config
 
 def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
@@ -55,8 +55,11 @@ def add(
     if hasattr(file_data, 'default'):
         file_data = file_data.default
 
+    # Get document class from factory
+    DocumentClass = get_document_class()
+
     # Create new document using ORM
-    doc = FSMarkdownDocument(status=status)
+    doc = DocumentClass(status=status)
 
     # Set body content
     body = _read_body_param_or_stdin(body_arg)
@@ -149,8 +152,8 @@ def add(
         file_ref = doc.copy_file(src, key)
         file_ref.data = data
 
-    # Create the document
-    doc.create()
+    # Create and save the document (this triggers stage evaluation)
+    doc.save()
 
     # Output the document ID
     typer.echo(doc.id)

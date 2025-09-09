@@ -11,6 +11,8 @@ There will be ORM Adapters to connect to other Datasources (like DBMS), for case
 
 **CLI Comfort** – Add and Discover Docs, Start Tasks and Flows, Change Docs States with an easy pip CLI `idflow`.
 
+**Advanced Requirements System** – Flexible stage requirements with attribute checks, pattern matching (Glob/Regex), list operations, and file presence validation.
+
 ---
 
 ### Use Cases
@@ -446,6 +448,14 @@ uuid/                             # Doc-ID
             └─ deep-research-gpt/ # task 2
                └─ ...
 ```
+
+---
+
+## Documentation
+
+- **[Requirements System](README_REQUIREMENTS.md)** - Complete guide to stage requirements, pattern matching, and validation
+- **[ORM Documentation](README_ORM.md)** - Document ORM and data model details
+- **[Development Guide](README_dev.md)** - Development setup and guidelines
 
 ---
 

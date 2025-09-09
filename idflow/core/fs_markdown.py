@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Type, TypeVar
 from uuid import uuid4
 
-from .document import Document, Stage
+from .document import Document
+from .stage import Stage
 from .models import FileRef
 from .io import ensure_dir, write_frontmatter, read_frontmatter
 from .repo import find_doc_dir
@@ -58,7 +59,7 @@ class FSMarkdownDocument(Document):
 
     def _load_stages(self) -> List[Stage]:
         """Load stages from the filesystem."""
-        from .document import Stage
+        from .stage import Stage
 
         stages = []
         stages_dir = self.doc_dir / "stages"
@@ -185,6 +186,8 @@ class FSMarkdownDocument(Document):
                     doc = cls(body=body, **doc_data)
                     # Store the original status from the filesystem location
                     doc._original_status = status
+                    # Mark as persisted since it was loaded from storage
+                    doc._persisted = True
                     # Reset internal paths so they get recalculated
                     doc._doc_dir = None
                     doc._doc_file = None
@@ -219,6 +222,8 @@ class FSMarkdownDocument(Document):
                     doc = cls(body=body, **doc_data)
                     # Store the original status for status change detection
                     doc._original_status = status
+                    # Mark as persisted since it was loaded from storage
+                    doc._persisted = True
 
                     # Apply filters
                     if cls._matches_filters(doc, filters):

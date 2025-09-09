@@ -3,7 +3,6 @@ active: true
 multiple_callable: false
 workflows:
   - name: create_blog_post_draft
-    version: 1
     when: "true"
     inputs:
       prompt_template: "create_blog_post_draft"

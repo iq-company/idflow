@@ -15,8 +15,7 @@ class WorkflowManager:
     def __init__(self, workflows_dir: Optional[Path] = None, tasks_dir: Optional[Path] = None):
         self.workflows_dir = workflows_dir or Path("idflow/workflows")
         self.tasks_dir = tasks_dir or Path("idflow/tasks")
-        self._workflow_hashes: Dict[str, str] = {}
-        self._task_hashes: Dict[str, str] = {}
+        self._last_upload_results = None
 
     def discover_workflows(self) -> List[Path]:
         """Discover all workflow JSON files."""
@@ -25,6 +24,14 @@ class WorkflowManager:
             if workflow_file.name != "event_handlers.json":  # Skip event handlers
                 workflows.append(workflow_file)
         return workflows
+
+    def find_workflow_file(self, workflow_name: str) -> Optional[Path]:
+        """Find workflow file by name."""
+        for workflow_file in self.discover_workflows():
+            workflow_def = self.load_workflow_definition(workflow_file)
+            if workflow_def and workflow_def.get('name') == workflow_name:
+                return workflow_file
+        return None
 
     def discover_tasks(self) -> List[Path]:
         """Discover all task Python files."""
@@ -86,32 +93,55 @@ class WorkflowManager:
             print(f"Failed to load task from {task_file}: {e}")
             return None
 
-    def calculate_file_hash(self, file_path: Path) -> str:
-        """Calculate SHA256 hash of file content."""
-        import hashlib
-        with open(file_path, 'rb') as f:
-            return hashlib.sha256(f.read()).hexdigest()
 
     def needs_upload(self, name: str, file_path: Path, is_workflow: bool = True) -> bool:
-        """Check if file needs to be uploaded based on hash comparison."""
-        current_hash = self.calculate_file_hash(file_path)
-        hash_key = f"{name}_{'workflow' if is_workflow else 'task'}"
+        """Check if workflow needs to be uploaded based on version comparison."""
+        if not is_workflow:
+            return True
 
-        if hash_key in (self._workflow_hashes if is_workflow else self._task_hashes):
-            if (self._workflow_hashes if is_workflow else self._task_hashes)[hash_key] == current_hash:
+        # For workflows, check if the exact version exists in Conductor
+        return not self._workflow_exists_in_conductor(name, file_path)
+
+    def _workflow_exists_in_conductor(self, name: str, file_path: Path) -> bool:
+        """Check if workflow exists in Conductor with the correct version."""
+        try:
+            import requests
+            from .conductor_client import _get_base_url, _get_headers
+
+            # Load workflow definition to get version
+            workflow_def = self.load_workflow_definition(file_path)
+            if not workflow_def:
                 return False
 
-        # Update hash
-        if is_workflow:
-            self._workflow_hashes[hash_key] = current_hash
-        else:
-            self._task_hashes[hash_key] = current_hash
+            expected_version = workflow_def.get('version', 1)
 
-        return True
+            # Check if workflow exists in Conductor metadata
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            response = requests.get(
+                f"{base_url}/metadata/workflow",
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                existing_workflows = response.json()
+                for workflow in existing_workflows:
+                    if (workflow.get('name') == name and
+                        workflow.get('version', 1) == expected_version):
+                        return True
+
+            return False
+        except Exception as e:
+            # If check fails, assume upload is needed
+            print(f"Warning: Could not check workflow {name} in Conductor: {e}")
+            return False
 
     def upload_workflows(self, force: bool = False) -> Dict[str, bool]:
         """Upload all workflows to Conductor."""
         results = {}
+        uploaded_workflows = []
+        skipped_workflows = []
         workflows = self.discover_workflows()
 
         print(f"Found {len(workflows)} workflow files")
@@ -130,8 +160,9 @@ class WorkflowManager:
 
             # Check if upload is needed
             if not force and not self.needs_upload(workflow_name, workflow_file, is_workflow=True):
-                print(f"Workflow {workflow_name} is up to date")
+                print(f"Workflow {workflow_name} is up to date (already exists in Conductor)")
                 results[workflow_name] = True
+                skipped_workflows.append(workflow_name)
                 continue
 
             # Upload workflow
@@ -140,8 +171,68 @@ class WorkflowManager:
 
             if success:
                 print(f"✓ Uploaded workflow: {workflow_name}")
+                uploaded_workflows.append(workflow_name)
             else:
                 print(f"✗ Failed to upload workflow: {workflow_name}")
+
+        # Store results for summary
+        self._last_upload_results = {
+            'uploaded': uploaded_workflows,
+            'skipped': skipped_workflows,
+            'total': len(workflows)
+        }
+
+        return results
+
+    def upload_single_workflow(self, workflow_name: str, force: bool = False) -> Dict[str, bool]:
+        """Upload a single workflow by name."""
+        results = {}
+        uploaded_workflows = []
+        skipped_workflows = []
+
+        # Find the workflow file
+        workflows = self.discover_workflows()
+        workflow_file = None
+
+        for wf_file in workflows:
+            workflow_def = self.load_workflow_definition(wf_file)
+            if workflow_def and workflow_def.get('name') == workflow_name:
+                workflow_file = wf_file
+                break
+
+        if not workflow_file:
+            print(f"Workflow '{workflow_name}' not found in local files")
+            return {workflow_name: False}
+
+        # Load workflow definition
+        workflow_def = self.load_workflow_definition(workflow_file)
+        if not workflow_def:
+            print(f"Failed to load workflow definition from {workflow_file}")
+            return {workflow_name: False}
+
+        # Check if upload is needed
+        if not force and not self.needs_upload(workflow_name, workflow_file, is_workflow=True):
+            print(f"Workflow {workflow_name} is up to date (already exists in Conductor)")
+            results[workflow_name] = True
+            skipped_workflows.append(workflow_name)
+        else:
+            # Upload workflow
+            from .conductor_client import upload_workflow
+            success = upload_workflow(workflow_def)
+            results[workflow_name] = success
+
+            if success:
+                print(f"✓ Uploaded workflow: {workflow_name}")
+                uploaded_workflows.append(workflow_name)
+            else:
+                print(f"✗ Failed to upload workflow: {workflow_name}")
+
+        # Store results for summary
+        self._last_upload_results = {
+            'uploaded': uploaded_workflows,
+            'skipped': skipped_workflows,
+            'total': 1
+        }
 
         return results
 

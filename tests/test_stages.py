@@ -5,7 +5,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from idflow.core.document_factory import get_document_class
-from idflow.core.document import Document, Stage
+from idflow.core.document import Document
+from idflow.core.stage import Stage
 
 
 class MockDocument(Document):
@@ -22,6 +23,10 @@ class MockDocument(Document):
 
     def _save_stage(self, stage):
         """Mock implementation of _save_stage."""
+        pass
+
+    def _create_stage(self, stage):
+        """Mock implementation of _create_stage."""
         pass
 
     def _get_stage_path(self, stage_name, counter=1):
@@ -270,3 +275,305 @@ class TestStageIntegration:
         retrieved_stage2 = doc.get_stage("workflow", 2)
         assert retrieved_stage2 == stage2
         assert retrieved_stage2.info == "second"
+
+
+class TestRequirements:
+    """Test the new requirements functionality."""
+
+    def test_attribute_checks(self):
+        """Test attribute check requirements."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, AttributeCheck
+
+        # Create a mock document with attributes
+        doc = MockDocument()
+        doc.tags = ["blog_post_ideas", "research"]
+        doc.seo_keywords = "research, blog, ideas"
+        doc.priority = 5
+        doc.author = "John Doe"
+
+        # Test EQ operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="seo_keywords", operator="EQ", value="research, blog, ideas")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test NE operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="author", operator="NE", value="Jane Doe")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test GT operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="priority", operator="GT", value=3)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test failed requirement
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="priority", operator="GT", value=10)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == False
+
+    def test_list_checks(self):
+        """Test list check requirements."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, ListCheck
+
+        # Create a mock document with list attributes
+        doc = MockDocument()
+        doc.tags = ["blog_post_ideas", "research", "content"]
+        doc.categories = ["tech", "programming"]
+
+        # Test HAS operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                list_checks=[
+                    ListCheck(attribute="tags", operator="HAS", value="blog_post_ideas")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test CONTAINS operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                list_checks=[
+                    ListCheck(attribute="tags", operator="CONTAINS", value="research")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test NOT_HAS operator
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                list_checks=[
+                    ListCheck(attribute="tags", operator="NOT_HAS", value="draft")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test failed requirement
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                list_checks=[
+                    ListCheck(attribute="tags", operator="HAS", value="nonexistent")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == False
+
+    def test_case_sensitivity(self):
+        """Test case sensitivity in requirements."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, AttributeCheck, ListCheck
+
+        doc = MockDocument()
+        doc.tags = ["Blog_Post_Ideas", "Research"]
+        doc.seo_keywords = "Research, Blog, Ideas"
+
+        # Test case sensitive (default)
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="seo_keywords", operator="EQ", value="Research, Blog, Ideas", case_sensitive=True)
+                ],
+                list_checks=[
+                    ListCheck(attribute="tags", operator="HAS", value="Blog_Post_Ideas", case_sensitive=True)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test case insensitive
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="seo_keywords", operator="EQ", value="research, blog, ideas", case_sensitive=False)
+                ],
+                list_checks=[
+                    ListCheck(attribute="tags", operator="HAS", value="blog_post_ideas", case_sensitive=False)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+    def test_combined_requirements(self):
+        """Test combined requirements (file_presence + attribute + list + stage)."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, AttributeCheck, ListCheck, FilePresenceRequirement, StageRequirement
+
+        doc = MockDocument()
+        doc.tags = ["blog_post_ideas", "research"]
+        doc.priority = 5
+        doc.add_file_ref("content", "test.md", "file-uuid")
+
+        # Add a completed stage
+        stage = doc.add_stage("previous_stage", status="done")
+
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                file_presence=FilePresenceRequirement(key="content", count=1, count_operator=">="),
+                attribute_checks=[
+                    AttributeCheck(attribute="priority", operator="GT", value=3)
+                ],
+                list_checks=[
+                    ListCheck(attribute="tags", operator="HAS", value="blog_post_ideas")
+                ],
+                stages={
+                    "previous_stage": StageRequirement(status="done")
+                }
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+    def test_pattern_matching(self):
+        """Test pattern matching requirements (Glob and Regex)."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, AttributeCheck
+
+        # Create a mock document with various string attributes
+        doc = MockDocument()
+        doc.filename = "blog_post_2024_01_15.md"
+        doc.title = "How to Build a Blog Post"
+        doc.content = "This is a sample blog post about programming and technology."
+        doc.url = "https://example.com/blog/how-to-build-blog-post"
+        doc.email = "user@example.com"
+
+        # Test Glob Pattern Matching - CP (Contains Pattern)
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="filename", operator="CP", value="blog_*.md")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test Glob Pattern Matching - NP (Not Contains Pattern)
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="filename", operator="NP", value="draft_*.md")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test Regex Pattern Matching - REGEX
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="url", operator="REGEX", value=r"https://.*\.com/.*")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test Regex Pattern Matching - NOT_REGEX
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="email", operator="NOT_REGEX", value=r".*@gmail\.com")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test case sensitivity with patterns
+        doc.title = "How to Build a BLOG Post"
+
+        # Case sensitive (should fail)
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="title", operator="CP", value="*blog*", case_sensitive=True)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == False
+
+        # Case insensitive (should pass)
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="title", operator="CP", value="*blog*", case_sensitive=False)
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == True
+
+        # Test failed pattern matching
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="filename", operator="CP", value="draft_*.md")
+                ]
+            )
+        )
+        assert stage_def.check_requirements(doc) == False
+
+    def test_invalid_patterns(self):
+        """Test handling of invalid patterns."""
+        from idflow.core.stage_definitions import StageDefinition, Requirements, AttributeCheck
+
+        doc = MockDocument()
+        doc.content = "Some content"
+
+        # Test invalid regex pattern
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="content", operator="REGEX", value="[invalid regex")
+                ]
+            )
+        )
+        # Should not crash, but return False for invalid regex
+        assert stage_def.check_requirements(doc) == False
+
+        # Test non-string values with pattern matching
+        doc.priority = 5
+
+        stage_def = StageDefinition(
+            name="test_stage",
+            requirements=Requirements(
+                attribute_checks=[
+                    AttributeCheck(attribute="priority", operator="CP", value="*")
+                ]
+            )
+        )
+        # Should return False for non-string values
+        assert stage_def.check_requirements(doc) == False

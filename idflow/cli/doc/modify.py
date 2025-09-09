@@ -5,7 +5,7 @@ from typing import Optional, List, Any, Dict, Tuple
 from uuid import uuid4
 
 import typer
-from idflow.core.fs_markdown import FSMarkdownDocument
+from idflow.core.document_factory import get_document_class
 
 def _parse_prop_eq_val(arg: str, flag: str) -> tuple[str, str]:
     if "=" not in arg:
@@ -62,8 +62,11 @@ def modify(
     if hasattr(file_data, 'default'):
         file_data = file_data.default
 
+    # Get document class from factory
+    DocumentClass = get_document_class()
+
     # Find the document using ORM
-    doc = FSMarkdownDocument.find(uuid)
+    doc = DocumentClass.find(uuid)
     if not doc:
         raise typer.BadParameter(f"Document not found: {uuid}")
 

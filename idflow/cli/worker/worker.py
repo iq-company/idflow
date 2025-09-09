@@ -3,6 +3,8 @@ import typer
 import sys
 import signal
 import time
+import os
+import subprocess
 from pathlib import Path
 from typing import List, Optional
 import importlib.util
@@ -85,6 +87,192 @@ def list_workers():
             typer.echo(f"  - {task_file} (no task name found)")
 
 
+@app.command("ps")
+def list_running_workers(
+    full_command: bool = typer.Option(False, "--full", "-f", help="Show full command path")
+):
+    """List running worker processes."""
+    try:
+        # Find Python processes that look like workers
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        lines = result.stdout.split('\n')
+        worker_lines = []
+
+        for line in lines:
+            # Look for processes that contain idflow and worker-related terms
+            # But exclude kernel workers, system processes, and CLI commands
+            if (any(term in line.lower() for term in ['idflow', 'conductor']) or
+                ('python' in line.lower() and any(term in line.lower() for term in ['worker', 'task', 'conductor']))):
+                # Skip the header line, kernel workers, and CLI commands
+                if (not line.startswith('USER') and
+                    not line.startswith('root') and
+                    'kworker' not in line and
+                    'worker ps' not in line and
+                    'worker killall' not in line and
+                    'worker list' not in line and
+                    'worker start' in line):  # Only show actual worker start processes
+                    worker_lines.append(line)
+
+        if worker_lines:
+            typer.echo("Running worker processes:")
+            if full_command:
+                typer.echo("WORKER                    USER       PID  %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND")
+            else:
+                typer.echo("WORKER                    USER       PID  %CPU %MEM    VSZ   RSS TTY      STAT START   TIME")
+
+            for line in worker_lines:
+                # Extract worker name from command line
+                worker_name = "unknown"
+                if "--worker" in line:
+                    # Extract worker name from --worker argument
+                    import re
+                    match = re.search(r'--worker\s+(\w+)', line)
+                    if match:
+                        worker_name = match.group(1)
+                elif "--all" in line:
+                    worker_name = "all"
+
+                # Format worker name to fit in 25 characters
+                worker_display = worker_name[:25].ljust(25)
+
+                # Parse the ps output
+                parts = line.split()
+                if len(parts) >= 11:
+                    if full_command:
+                        # Show full command
+                        command_start = 10  # Start of command in ps output
+                        command = " ".join(parts[command_start:])
+                        new_line = f"{worker_display} {parts[0]:<10} {parts[1]:<6} {parts[2]:<5} {parts[3]:<5} {parts[4]:<8} {parts[5]:<8} {parts[6]:<8} {parts[7]:<5} {parts[8]:<8} {parts[9]:<8} {command}"
+                    else:
+                        # Show only worker name, no command
+                        new_line = f"{worker_display} {parts[0]:<10} {parts[1]:<6} {parts[2]:<5} {parts[3]:<5} {parts[4]:<8} {parts[5]:<8} {parts[6]:<8} {parts[7]:<5} {parts[8]:<8} {parts[9]:<8}"
+                    typer.echo(new_line)
+                else:
+                    # Fallback to original line if parsing fails
+                    if full_command:
+                        typer.echo(f"{worker_display} {line}")
+                    else:
+                        typer.echo(f"{worker_display} {line}")
+        else:
+            typer.echo("No worker processes found")
+
+    except subprocess.CalledProcessError as e:
+        typer.echo(f"Error listing processes: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        typer.echo("Error: 'ps' command not found. This command requires Unix/Linux system.")
+        sys.exit(1)
+
+
+@app.command("killall")
+def kill_workers(
+    pattern: Optional[str] = typer.Argument(None, help="Worker name substring to match (optional, kills all if not provided)"),
+    kill: bool = typer.Option(False, "--kill", "-k", help="Use SIGKILL instead of SIGTERM"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt")
+):
+    """Kill worker processes by worker name substring."""
+    try:
+        # First, list processes that match the pattern
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        lines = result.stdout.split('\n')
+        matching_pids = []
+
+        for line in lines:
+            # Only match actual worker processes, not CLI commands
+            if ('worker start' in line and
+                'worker ps' not in line and
+                'worker killall' not in line and
+                'worker list' not in line and
+                not line.startswith('USER')):
+
+                # Extract worker name from command line
+                worker_name = "unknown"
+                if "--worker" in line:
+                    import re
+                    match = re.search(r'--worker\s+(\w+)', line)
+                    if match:
+                        worker_name = match.group(1)
+                elif "--all" in line:
+                    worker_name = "all"
+
+                # If no pattern provided, match all workers
+                # If pattern provided, check if it's contained in worker name
+                if pattern is None or pattern.lower() in worker_name.lower():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            pid = int(parts[1])
+                            matching_pids.append((pid, line, worker_name))
+                        except ValueError:
+                            continue
+
+        if not matching_pids:
+            pattern_desc = "any pattern" if pattern is None else f"pattern '{pattern}'"
+            typer.echo(f"No worker processes found matching {pattern_desc}")
+            return
+
+        pattern_desc = "all workers" if pattern is None else f"pattern '{pattern}'"
+        typer.echo(f"Found {len(matching_pids)} worker processes matching {pattern_desc}:")
+        typer.echo("WORKER                    USER       PID  %CPU %MEM    VSZ   RSS TTY      STAT START   TIME")
+
+        for pid, line, worker_name in matching_pids:
+            # Format worker name to fit in 25 characters
+            worker_display = worker_name[:25].ljust(25)
+
+            # Parse the ps output
+            parts = line.split()
+            if len(parts) >= 11:
+                # Show only worker name, no command (like ps without --full)
+                new_line = f"{worker_display} {parts[0]:<10} {parts[1]:<6} {parts[2]:<5} {parts[3]:<5} {parts[4]:<8} {parts[5]:<8} {parts[6]:<8} {parts[7]:<5} {parts[8]:<8} {parts[9]:<8}"
+                typer.echo(new_line)
+            else:
+                # Fallback to original line if parsing fails
+                typer.echo(f"{worker_display} {line}")
+
+        if not yes:
+            confirm = typer.confirm(f"Kill these {len(matching_pids)} processes?")
+            if not confirm:
+                typer.echo("Cancelled")
+                return
+
+        # Kill the processes
+        killed_count = 0
+        signal_name = "SIGKILL" if kill else "SIGTERM"
+        for pid, line, worker_name in matching_pids:
+            try:
+                signal_to_use = signal.SIGKILL if kill else signal.SIGTERM
+                os.kill(pid, signal_to_use)
+                killed_count += 1
+                typer.echo(f"Killed PID {pid} ({worker_name}) with {signal_name}")
+            except ProcessLookupError:
+                typer.echo(f"Process {pid} ({worker_name}) already terminated")
+            except PermissionError:
+                typer.echo(f"Permission denied to kill PID {pid} ({worker_name})")
+            except Exception as e:
+                typer.echo(f"Error killing PID {pid} ({worker_name}): {e}")
+
+        typer.echo(f"Killed {killed_count} processes")
+
+    except subprocess.CalledProcessError as e:
+        typer.echo(f"Error listing processes: {e}")
+        sys.exit(1)
+    except FileNotFoundError:
+        typer.echo("Error: 'ps' command not found. This command requires Unix/Linux system.")
+        sys.exit(1)
+
+
 @app.command("start")
 def start_workers(
     workers: Optional[List[str]] = typer.Option(None, "--worker", "-w", help="Specific workers to start"),
@@ -154,32 +342,6 @@ def start_workers(
     except KeyboardInterrupt:
         typer.echo("\nShutting down workers...")
         task_handler.stop_processes()
-
-
-@app.command("upload")
-def upload_workflows(
-    force: bool = typer.Option(False, "--force", help="Force upload even if up to date")
-):
-    """Upload all workflows to Conductor. Tasks are automatically registered via @worker_task decorators."""
-    workflow_manager = get_workflow_manager()
-
-    typer.echo("Uploading workflows to Conductor...")
-    typer.echo("Note: Tasks are automatically registered via @worker_task decorators when workers start.")
-
-    results = workflow_manager.upload_workflows(force=force)
-
-    # Show results
-    typer.echo("\nWorkflow upload results:")
-    for name, success in results.items():
-        status = "✓" if success else "✗"
-        typer.echo(f"  {status} {name}")
-
-    # Summary
-    total_workflows = len(results)
-    successful_workflows = sum(1 for success in results.values() if success)
-
-    typer.echo(f"\nSummary: {successful_workflows}/{total_workflows} workflows uploaded successfully")
-    typer.echo("Tasks will be automatically registered when workers start.")
 
 
 if __name__ == "__main__":

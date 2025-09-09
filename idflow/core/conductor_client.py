@@ -115,3 +115,17 @@ def search_workflows(size: int = 10) -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"Failed to search workflows: {e}")
         return []
+
+
+def get_workflow_definitions() -> List[Dict[str, Any]]:
+    """Get all workflow definitions from Conductor."""
+    try:
+        base_url = _get_base_url()
+        headers = _get_headers()
+
+        response = requests.get(f"{base_url}/metadata/workflow", headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Failed to get workflow definitions: {e}")
+        return []

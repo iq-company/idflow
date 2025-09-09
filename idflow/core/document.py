@@ -1,10 +1,13 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union, TYPE_CHECKING
 from uuid import uuid4
 
 from .models import DocRef, FileRef, VALID_STATUS, VALID_STAGE_STATUS
+
+if TYPE_CHECKING:
+    from .stage import Stage
 
 T = TypeVar('T', bound='Document')
 
@@ -132,6 +135,9 @@ class Document(ABC):
         existing_stages = [s for s in self.stages if s.name == name]
         counter = len(existing_stages) + 1
 
+        # Import Stage class to avoid circular import
+        from .stage import Stage
+
         # Create stage first
         stage = Stage(name=name, parent=self, counter=counter, **kwargs)
 
@@ -148,6 +154,9 @@ class Document(ABC):
 
         self.stages.append(stage)
         self._dirty = True
+
+        # Save the stage immediately
+        stage.save()
 
         # Update document status to "active" if it was "inbox" and has stages
         if self.status == "inbox" and len(self.stages) > 0:
@@ -200,10 +209,20 @@ class Document(ABC):
     # Lifecycle hooks
     def before_save(self) -> None:
         """Called before saving the document. Override in subclasses."""
-        pass
+        # Only trigger stage evaluation for updates (not for new documents)
+        if hasattr(self, '_persisted') and self._persisted:
+            self._trigger_stage_evaluation()
 
     def after_save(self) -> None:
         """Called after saving the document. Override in subclasses."""
+        # Trigger stage evaluation and check if status changed
+        result = self._trigger_stage_evaluation()
+
+        # If status changed during stage evaluation, save again
+        if result and result.get('status_changed'):
+            self._save()
+            self._dirty = False
+
         self._handle_stage_lifecycle()
 
     def before_create(self) -> None:
@@ -212,7 +231,13 @@ class Document(ABC):
 
     def after_create(self) -> None:
         """Called after creating the document. Override in subclasses."""
-        pass
+        # Trigger stage evaluation and check if status changed
+        result = self._trigger_stage_evaluation()
+
+        # If status changed during stage evaluation, save again
+        if result and result.get('status_changed'):
+            self._save()
+            self._dirty = False
 
     def before_destroy(self) -> None:
         """Called before destroying the document. Override in subclasses."""
@@ -224,24 +249,31 @@ class Document(ABC):
 
     # CRUD operations
     def save(self) -> None:
-        """Save the document and all dirty stages."""
-        self.before_save()
+        """Save the document and all dirty stages. Automatically detects if it's a new document."""
+        # Check if this is a new document (hasn't been persisted yet)
+        if not hasattr(self, '_persisted') or not self._persisted:
+            # This is a new document, call create
+            self.create()
+        else:
+            # This is an existing document, call update
+            self.before_save()
 
-        # Save all dirty stages first
-        if self._stages:
-            for stage in self._stages:
-                if hasattr(stage, '_dirty') and stage._dirty:
-                    stage._save()
-                    stage._dirty = False
+            # Save all dirty stages first
+            if self._stages:
+                for stage in self._stages:
+                    if hasattr(stage, '_dirty') and stage._dirty:
+                        stage._save()
+                        stage._dirty = False
 
-        self._save()
-        self._dirty = False
-        self.after_save()
+            self._save()
+            self._dirty = False
+            self.after_save()
 
     def create(self) -> None:
         """Create a new document."""
         self.before_create()
         self._create()
+        self._persisted = True  # Mark as persisted
         self.after_create()
 
     def destroy(self) -> None:
@@ -334,171 +366,152 @@ class Document(ABC):
         for stage in active_stages:
             stage.status = "cancelled"
 
+    def _trigger_stage_evaluation(self) -> Optional[Dict[str, Any]]:
+        """Trigger stage evaluation for documents with status 'inbox' or 'active'."""
+        # Only trigger stage evaluation for documents in active states
+        if self.status not in {"inbox", "active"}:
+            return None
 
-class Stage(Document):
-    """
-    Stage model that inherits from Document and represents a stage within a parent document.
-
-    Stages can appear multiple times within a document and have their own files and references.
-    """
-
-    def __init__(self, name: str, parent: Document, counter: int = 1, **kwargs):
-        # Filter out name and counter from kwargs to avoid conflicts
-        stage_kwargs = {k: v for k, v in kwargs.items() if k not in ['name', 'counter']}
-
-        # Set default status for stages if not provided
-        if 'status' not in stage_kwargs:
-            stage_kwargs['status'] = 'scheduled'
-
-        super().__init__(**stage_kwargs)
-        self.name = name
-        self.parent = parent
-        self.counter = counter
-        self._dirty = False
-        self._data['name'] = name
-        self._data['counter'] = counter
-        self._data['parent_id'] = parent.id
-
-        # Load stage definition
-        self._stage_definition = None
-        self._load_stage_definition()
-
-    def _validate_status(self) -> None:
-        """Validate the stage status using stage-specific valid statuses."""
-        if self.status not in VALID_STAGE_STATUS:
-            raise ValueError(f"Invalid stage status: {self.status}. Must be one of {VALID_STAGE_STATUS}")
-
-    def set_status(self, status: str) -> None:
-        """Set the stage status and mark as dirty."""
-        super().__setattr__('status', status)
-        super().__setattr__('_dirty', True)
-        if hasattr(self, 'parent') and self.parent:
-            self.parent.mark_stage_dirty(self)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        """Override __setattr__ to notify parent document of changes."""
-        if name in ['id', '_data', '_stages', '_doc_refs', '_file_refs', '_body', '_dirty', 'name', 'parent', 'counter']:
-            super().__setattr__(name, value)
-        elif name == 'status':
-            # Handle status separately to mark as dirty and update _data
-            super().__setattr__(name, value)
-            # Also update _data so to_dict() returns the correct status
-            try:
-                if self._data:
-                    self._data['status'] = value
-                    # Only mark as dirty after initialization is complete and parent exists
-                    if hasattr(self, 'parent') and self.parent:
-                        super().__setattr__('_dirty', True)
-                        self.parent.mark_stage_dirty(self)
-            except (AttributeError, RecursionError):
-                # During initialization, attributes may not be available yet
-                pass
-        elif name == 'body':
-            # Handle body separately to avoid duplication
-            super().__setattr__('_body', value)
-            self._dirty = True
-            if hasattr(self, 'parent') and self.parent:
-                self.parent.mark_stage_dirty(self)
-        else:
-            self._data[name] = value
-            self._dirty = True
-            if hasattr(self, 'parent') and self.parent:
-                self.parent.mark_stage_dirty(self)
-
-    @property
-    def stage_path(self) -> Path:
-        """Get the filesystem path for this stage relative to the parent document."""
-        return self.parent._get_stage_path(self.name, self.counter)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert stage to dictionary representation, filtering out internal attributes."""
-        result = self._data.copy()
-
-        # Remove internal ORM attributes that shouldn't be serialized
-        internal_attrs = ['_doc_dir', '_doc_file', '_data_dir', '_stages', '_doc_refs', '_file_refs', '_stage_definition']
-        for attr in internal_attrs:
-            if attr in result:
-                del result[attr]
-
-        # Remove parent object reference (keep only parent_id)
-        if 'parent' in result:
-            del result['parent']
-
-        # Add the serialized references
-        result['_doc_refs'] = [ref.model_dump() for ref in self.doc_refs]
-        result['_file_refs'] = [ref.model_dump() for ref in self.file_refs]
-
-        return result
-
-    def _load_stages(self) -> List['Stage']:
-        """Stages don't have sub-stages, so return empty list."""
-        return []
-
-    def _save(self) -> None:
-        """Save stage data."""
-        self.parent._save_stage(self)
-
-    def _create(self) -> None:
-        """Create stage data."""
-        self.parent._create_stage(self)
-
-    def _destroy(self) -> None:
-        """Destroy stage data."""
-        self.parent._destroy_stage(self)
-
-    @classmethod
-    def _find(cls, uuid: str) -> Optional['Stage']:
-        """Find stage by UUID - not implemented for stages."""
-        raise NotImplementedError("Stages cannot be found independently")
-
-    @classmethod
-    def _where(cls, **filters) -> List['Stage']:
-        """Find stages by filters - not implemented for stages."""
-        raise NotImplementedError("Stages cannot be queried independently")
-
-    def _load_stage_definition(self) -> None:
-        """Load the stage definition for this stage."""
         try:
-            from .stage_definitions import get_stage_definitions
-            stage_definitions = get_stage_definitions()
-            self._stage_definition = stage_definitions.get_definition(self.name)
-        except Exception:
-            # If stage definitions can't be loaded, set to None
-            self._stage_definition = None
+            return self.evaluate_stages()
+        except Exception as e:
+            # Don't fail document save if stage evaluation fails
+            print(f"Warning: Failed to evaluate stages for document {self.id}: {e}")
+            return None
 
-    @property
-    def stage_definition(self):
-        """Get the stage definition for this stage."""
-        return self._stage_definition
+    def evaluate_stages(self, stage_name: Optional[str] = None, allow_rerun: bool = False) -> Dict[str, Any]:
+        """
+        Evaluate stage requirements for this document and automatically start stages where requirements are met.
 
-    def check_requirements(self) -> bool:
-        """Check if the requirements for this stage are met."""
-        if not self._stage_definition:
-            return True
-        return self._stage_definition.check_requirements(self.parent)
+        Args:
+            stage_name: Specific stage name to evaluate (None for all stages)
+            allow_rerun: Allow rerunning completed stages with multiple_callable: true
 
-    def trigger_workflows(self, conductor_client=None) -> List[str]:
-        """Trigger the configured workflows for this stage."""
-        if not self._stage_definition:
-            return []
-        return self._stage_definition.trigger_workflows(self.parent, self.counter, conductor_client)
+        Returns:
+            Dictionary with evaluation results
+        """
+        from .stage_definitions import get_stage_definitions
 
-    def before_save(self) -> None:
-        """Called before saving the stage."""
-        super().before_save()
+        # Get stage definitions
+        stage_definitions = get_stage_definitions()
+        available_stages = stage_definitions.list_definitions()
 
-        # Only process if stage definition exists and status is not final
-        if not self._stage_definition or self.status in {"done", "blocked", "cancelled", "archived"}:
-            return
+        if not available_stages:
+            return {
+                "success": False,
+                "error": "No stage definitions found",
+                "stages_evaluated": 0,
+                "stages_started": 0,
+                "stages_skipped": 0
+            }
 
-        # Check requirements and update status accordingly
-        requirements_met = self.check_requirements()
+        # Filter stages if specific stage requested
+        stages_to_evaluate = available_stages
+        if stage_name:
+            if stage_name not in available_stages:
+                return {
+                    "success": False,
+                    "error": f"Stage '{stage_name}' not found",
+                    "available_stages": available_stages,
+                    "stages_evaluated": 0,
+                    "stages_started": 0,
+                    "stages_skipped": 0
+                }
+            stages_to_evaluate = [stage_name]
 
-        if requirements_met and self.status == "scheduled":
-            # Requirements are met and stage is scheduled -> activate
+        # Track results
+        total_evaluated = 0
+        stages_started = 0
+        stages_skipped = 0
+        started_stages = []
+        skipped_stages = []
+
+        # Track if document has any stages (existing or newly created)
+        has_stages = len(self.stages) > 0
+        original_status = self.status
+
+        for stage_name in stages_to_evaluate:
+            stage_def = stage_definitions.get_definition(stage_name)
+            if not stage_def:
+                continue
+
+            # Check if stage already exists for this document
+            existing_stages = self.get_stages(stage_name)
+
+            # Determine if we can create/rerun this stage
+            can_create = True
+            skip_reason = None
+
+            if existing_stages:
+                # Check if any stage is still active (scheduled or active)
+                active_stages = [s for s in existing_stages if s.status in {"scheduled", "active"}]
+                if active_stages:
+                    can_create = False
+                    skip_reason = f"already has active stage (status: {active_stages[0].status})"
+                elif not allow_rerun:
+                    can_create = False
+                    skip_reason = "already exists (use allow_rerun to rerun completed stages)"
+                elif not stage_def.multiple_callable:
+                    can_create = False
+                    skip_reason = "not marked as multiple_callable in stage definition"
+
+            if not can_create:
+                skipped_stages.append({
+                    "name": stage_name,
+                    "reason": skip_reason
+                })
+                stages_skipped += 1
+                continue
+
+            # Check requirements
+            requirements_met = stage_def.check_requirements(self)
+            total_evaluated += 1
+
+            if requirements_met:
+                # Create stage in active status (requirements are met)
+                new_stage = self.add_stage(stage_name, status="active")
+                has_stages = True  # Mark that document now has stages
+
+                # Trigger workflows for this stage
+                triggered_workflows = []
+                try:
+                    triggered_workflows = stage_def.trigger_workflows(self)
+                except Exception as e:
+                    # Log error but don't fail the stage creation
+                    print(f"Warning: Failed to trigger workflows for stage {stage_name}: {e}")
+
+                started_stages.append({
+                    "name": stage_name,
+                    "id": new_stage.id,
+                    "counter": new_stage.counter,
+                    "workflows_triggered": len(triggered_workflows)
+                })
+                stages_started += 1
+            else:
+                skipped_stages.append({
+                    "name": stage_name,
+                    "reason": "requirements not met"
+                })
+                stages_skipped += 1
+
+        # Update document status to "active" if it was "inbox" and has stages
+        status_changed = False
+        if original_status == "inbox" and has_stages:
             self.status = "active"
-            # Trigger workflows
-            self.trigger_workflows()
-        elif not requirements_met and self.status == "active":
-            # Requirements no longer met and stage is active -> cancel
-            self.status = "cancelled"
+            status_changed = True
+            # Mark document as dirty so it gets saved
+            self._dirty = True
+        elif original_status != self.status:
+            # Status was already changed during stage evaluation
+            status_changed = True
+
+        return {
+            "success": True,
+            "stages_evaluated": total_evaluated,
+            "stages_started": stages_started,
+            "stages_skipped": stages_skipped,
+            "started_stages": started_stages,
+            "skipped_stages": skipped_stages,
+            "status_changed": status_changed,
+            "document_status": self.status
+        }

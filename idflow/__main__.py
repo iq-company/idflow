@@ -21,5 +21,9 @@ app.add_typer(stage_app, name="stage")
 from idflow.cli.worker.worker import app as worker_app
 app.add_typer(worker_app, name="worker")
 
+# Import the CLI workflow commands
+from idflow.cli.workflow import app as workflow_app
+app.add_typer(workflow_app, name="workflow")
+
 if __name__ == "__main__":
     app()
