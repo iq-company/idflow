@@ -23,7 +23,7 @@ class FSMarkdownDocument(Document):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Store the original status for status change detection
+        # Store the original status for status change detection (internal only)
         self._original_status = self.status
         self._doc_dir: Optional[Path] = None
         self._doc_file: Optional[Path] = None
@@ -125,6 +125,9 @@ class FSMarkdownDocument(Document):
         # Remove body from data since it's handled separately
         if 'body' in doc_data:
             del doc_data['body']
+
+        # Remove internal tracking attributes that shouldn't be serialized
+        doc_data.pop('_original_status', None)
 
         write_frontmatter(self.doc_file, doc_data, self.body)
 

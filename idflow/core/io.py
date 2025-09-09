@@ -7,7 +7,9 @@ def ensure_dir(p: Path) -> None:
 
 def to_frontmatter(data: Dict[str, Any], body: str) -> str:
     fm = yaml.safe_dump(data, sort_keys=False, allow_unicode=True).strip()
-    return f"---\n{fm}\n---\n{body}\n"
+    # Only add one newline after the body, not multiple
+    body_content = body.strip() if body else ""
+    return f"---\n{fm}\n---\n{body_content}\n"
 
 def read_frontmatter(path: Path) -> Tuple[dict, str]:
     txt = path.read_text(encoding="utf-8")

@@ -450,7 +450,9 @@ class Document(ABC):
                     skip_reason = f"already has active stage (status: {active_stages[0].status})"
                 elif not allow_rerun:
                     can_create = False
-                    skip_reason = "already exists (use allow_rerun to rerun completed stages)"
+                    skip_reason = "already exists"
+                    if stage_def.multiple_callable:
+                        skip_reason += " (use --allow-rerun to rerun completed stages)"
                 elif not stage_def.multiple_callable:
                     can_create = False
                     skip_reason = "not marked as multiple_callable in stage definition"
