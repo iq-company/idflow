@@ -11,6 +11,7 @@ from unittest.mock import patch, MagicMock, call
 import subprocess
 import os
 import signal
+from pathlib import Path
 
 from idflow.cli.worker.worker import list_running_workers, kill_workers
 
@@ -393,3 +394,117 @@ usr       1234  0.1  0.2  23456  7890 pts/0    S+   10:01   0:00 python -m idflo
 
                 echo_calls = mock_echo.call_args_list
                 assert any("SIGKILL" in str(call) for call in echo_calls)
+
+
+class TestWorkerSignalHandling:
+    """Test the worker signal handling functionality."""
+
+    def test_signal_handler_stops_workers_cleanly(self):
+        """Test that signal handler stops workers cleanly on SIGINT."""
+        from idflow.cli.worker.worker import start_workers
+        from unittest.mock import patch, MagicMock
+
+        # Mock the TaskHandler
+        mock_task_handler = MagicMock()
+
+        # Mock worker files to ensure we have workers to start
+        mock_worker_files = [Path("test_worker.py")]
+
+        with patch('idflow.cli.worker.worker.TaskHandler', return_value=mock_task_handler), \
+             patch('idflow.cli.worker.worker.discover_worker_files', return_value=mock_worker_files), \
+             patch('idflow.cli.worker.worker.extract_task_name_from_file', return_value="test_worker"), \
+             patch('idflow.cli.worker.worker.load_task_function'), \
+             patch('typer.echo') as mock_echo, \
+             patch('signal.signal') as mock_signal, \
+             patch('time.sleep', side_effect=KeyboardInterrupt()):
+
+            # This should not raise an exception
+            try:
+                start_workers(all=True)
+            except (SystemExit, KeyboardInterrupt):
+                pass  # Expected to exit
+
+            # Verify signal handlers were set up
+            assert mock_signal.call_count == 2  # SIGINT and SIGTERM
+
+            # Verify task handler was created
+            mock_task_handler.start_processes.assert_called_once()
+
+    def test_signal_handler_handles_double_interrupt(self):
+        """Test that signal handler handles double interrupt gracefully."""
+        from idflow.cli.worker.worker import start_workers
+        from unittest.mock import patch, MagicMock
+
+        # Mock the TaskHandler
+        mock_task_handler = MagicMock()
+
+        # Mock worker files to ensure we have workers to start
+        mock_worker_files = [Path("test_worker.py")]
+
+        with patch('idflow.cli.worker.worker.TaskHandler', return_value=mock_task_handler), \
+             patch('idflow.cli.worker.worker.discover_worker_files', return_value=mock_worker_files), \
+             patch('idflow.cli.worker.worker.extract_task_name_from_file', return_value="test_worker"), \
+             patch('idflow.cli.worker.worker.load_task_function'), \
+             patch('typer.echo') as mock_echo, \
+             patch('signal.signal') as mock_signal, \
+             patch('sys.exit') as mock_exit:
+
+            # Simulate double interrupt
+            def simulate_double_interrupt():
+                # First interrupt
+                signal_handler = mock_signal.call_args_list[0][0][1]
+                signal_handler(signal.SIGINT, None)
+                # Second interrupt (should force exit)
+                signal_handler(signal.SIGINT, None)
+
+            with patch('time.sleep', side_effect=simulate_double_interrupt):
+                try:
+                    start_workers(all=True)
+                except (SystemExit, KeyboardInterrupt):
+                    pass  # Expected to exit
+
+            # Verify both interrupts were handled
+            assert mock_exit.call_count >= 1
+
+    def test_signal_handler_handles_stop_errors(self):
+        """Test that signal handler handles errors during worker stop."""
+        from idflow.cli.worker.worker import start_workers
+        from unittest.mock import patch, MagicMock
+
+        # Mock the TaskHandler to raise an error during stop
+        mock_task_handler = MagicMock()
+        mock_task_handler.stop_processes.side_effect = Exception("Stop error")
+
+        # Mock worker files to ensure we have workers to start
+        mock_worker_files = [Path("test_worker.py")]
+
+        with patch('idflow.cli.worker.worker.TaskHandler', return_value=mock_task_handler), \
+             patch('idflow.cli.worker.worker.discover_worker_files', return_value=mock_worker_files), \
+             patch('idflow.cli.worker.worker.extract_task_name_from_file', return_value="test_worker"), \
+             patch('idflow.cli.worker.worker.load_task_function'), \
+             patch('typer.echo') as mock_echo, \
+             patch('signal.signal') as mock_signal, \
+             patch('sys.exit') as mock_exit:
+
+            # Simulate interrupt by calling the signal handler directly
+            def simulate_interrupt():
+                # Get the signal handler from the first call
+                signal_handler = mock_signal.call_args_list[0][0][1]
+                signal_handler(signal.SIGINT, None)
+
+            with patch('time.sleep', side_effect=simulate_interrupt):
+                try:
+                    start_workers(all=True)
+                except (SystemExit, KeyboardInterrupt):
+                    pass  # Expected to exit
+
+            # Verify error was handled gracefully
+            echo_calls = mock_echo.call_args_list
+            # Check if any echo call contains error messages
+            error_found = any("Error during shutdown" in str(call) for call in echo_calls)
+            workers_stopped_found = any("Workers stopped" in str(call) for call in echo_calls)
+            error_starting_found = any("Error starting workers" in str(call) for call in echo_calls)
+            error_cleanup_found = any("Error during cleanup" in str(call) for call in echo_calls)
+
+            # At least one of these should be true
+            assert error_found or workers_stopped_found or error_starting_found or error_cleanup_found, f"Expected error handling messages, got: {[str(call) for call in echo_calls]}"

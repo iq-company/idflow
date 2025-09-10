@@ -15,6 +15,84 @@ from conductor.client.automator.task_handler import TaskHandler
 
 from ...core.workflow_manager import get_workflow_manager
 
+
+def is_child_process(pid: int, parent_pid: int) -> bool:
+    """Check if a process is a child of the parent process."""
+    try:
+        # Get the parent process ID of the given process
+        result = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        ppid = int(result.stdout.strip())
+        return ppid == parent_pid
+    except (ValueError, subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def determine_process_type(current_pid: int, ppid: int, memory_usage: float) -> str:
+    """Determine process type based on hierarchy and characteristics."""
+    if ppid is None:
+        return "unknown"
+
+    # Check if parent is a CLI process
+    try:
+        parent_result = subprocess.run(
+            ["ps", "-p", str(ppid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        if "idflow worker start" in parent_result.stdout:
+            # This is a child of CLI, determine if task-mgr or worker
+            # Task-manager typically has lower memory usage and is usually the first child
+            # We can also check the process start time to determine order
+            try:
+                # Get process start time to determine order
+                start_time_result = subprocess.run(
+                    ["ps", "-o", "lstart=", "-p", str(current_pid)],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                start_time = start_time_result.stdout.strip()
+
+                # Get all children of the parent to determine order
+                children_result = subprocess.run(
+                    ["ps", "--ppid", str(ppid), "-o", "pid,lstart="],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                children_lines = children_result.stdout.strip().split('\n')
+                children_pids = []
+                for line in children_lines:
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            children_pids.append(int(parts[0]))
+
+                # Sort by PID to get creation order
+                children_pids.sort()
+
+                # The first child is typically the task-manager
+                if current_pid == children_pids[0]:
+                    return "task-mgr"
+                else:
+                    return "worker"
+            except (subprocess.CalledProcessError, ValueError, IndexError):
+                # Fallback to memory usage
+                if memory_usage < 1.0:  # Less than 1% memory
+                    return "task-mgr"
+                else:
+                    return "worker"
+        else:
+            return "unknown"
+    except (subprocess.CalledProcessError, ValueError):
+        return "unknown"
+
 app = typer.Typer(help="Manage Conductor task workers")
 
 
@@ -127,19 +205,97 @@ def list_running_workers(
                 typer.echo("WORKER                    USER       PID  %CPU %MEM    VSZ   RSS TTY      STAT START   TIME")
 
             for line in worker_lines:
-                # Extract worker name from command line
+                # Extract worker name and process type from command line
                 worker_name = "unknown"
-                if "--worker" in line:
-                    # Extract worker name from --worker argument
+                process_type = "unknown"
+
+                if "--worker" in line or " -w " in line:
+                    # Extract worker name from --worker or -w argument
                     import re
-                    match = re.search(r'--worker\s+(\w+)', line)
+                    match = re.search(r'(?:--worker|-w)\s+(\w+)', line)
                     if match:
                         worker_name = match.group(1)
-                elif "--all" in line:
+                elif "--all" in line or " -a " in line or line.strip().endswith(" -a"):
                     worker_name = "all"
 
-                # Format worker name to fit in 25 characters
-                worker_display = worker_name[:25].ljust(25)
+                # Determine process type based on process hierarchy and command line
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        current_pid = int(parts[1])
+
+                        # Get parent process ID
+                        try:
+                            ppid_result = subprocess.run(
+                                ["ps", "-o", "ppid=", "-p", str(current_pid)],
+                                capture_output=True,
+                                text=True,
+                                check=True
+                            )
+                            ppid = int(ppid_result.stdout.strip())
+                        except (ValueError, subprocess.CalledProcessError):
+                            ppid = None
+
+                        # Determine process type based on hierarchy and command line
+                        if full_command:
+                            # For full command output, we can see the actual command
+                            if "conductor.client.automator.task_handler" in line or "TaskHandler" in line:
+                                process_type = "task-mgr"
+                            elif "conductor.client.automator.task_runner" in line or "TaskRunner" in line:
+                                process_type = "worker"
+                            elif "idflow worker start" in line:
+                                process_type = "cli"
+                            else:
+                                process_type = "unknown"
+                        else:
+                            # For non-full output, use hierarchy-based detection
+                            # CLI is typically the root process (no other idflow worker start as parent)
+                            # Task-manager is a child of CLI
+                            # Worker is a child of task-manager or CLI
+
+                            # Check if this process has other idflow worker start processes as children
+                            has_worker_children = False
+                            try:
+                                children_result = subprocess.run(
+                                    ["ps", "--ppid", str(current_pid), "-o", "pid="],
+                                    capture_output=True,
+                                    text=True,
+                                    check=True
+                                )
+                                child_pids = children_result.stdout.strip().split('\n')
+                                child_pids = [pid.strip() for pid in child_pids if pid.strip()]
+
+                                # Check if any children are idflow worker processes
+                                for child_pid in child_pids:
+                                    if child_pid:
+                                        child_result = subprocess.run(
+                                            ["ps", "-p", child_pid, "-o", "command="],
+                                            capture_output=True,
+                                            text=True,
+                                            check=True
+                                        )
+                                        if "idflow worker start" in child_result.stdout:
+                                            has_worker_children = True
+                                            break
+                            except (subprocess.CalledProcessError, ValueError):
+                                pass
+
+                            if has_worker_children:
+                                process_type = "cli"
+                            else:
+                                # Use the helper function to determine process type
+                                try:
+                                    memory_usage = float(parts[3])
+                                    process_type = determine_process_type(current_pid, ppid, memory_usage)
+                                except (ValueError, IndexError):
+                                    process_type = "unknown"
+                    except (ValueError, IndexError):
+                        process_type = "unknown"
+                else:
+                    process_type = "unknown"
+
+                # Format worker name and process type
+                worker_display = f"{worker_name} ({process_type})"[:25].ljust(25)
 
                 # Parse the ps output
                 parts = line.split()
@@ -197,15 +353,76 @@ def kill_workers(
                 'worker list' not in line and
                 not line.startswith('USER')):
 
-                # Extract worker name from command line
+                # Extract worker name and process type from command line
                 worker_name = "unknown"
-                if "--worker" in line:
+                process_type = "unknown"
+
+                if "--worker" in line or " -w " in line:
                     import re
-                    match = re.search(r'--worker\s+(\w+)', line)
+                    match = re.search(r'(?:--worker|-w)\s+(\w+)', line)
                     if match:
                         worker_name = match.group(1)
-                elif "--all" in line:
+                elif "--all" in line or " -a " in line or line.strip().endswith(" -a"):
                     worker_name = "all"
+
+                # Determine process type based on process hierarchy and command line
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        current_pid = int(parts[1])
+
+                        # Get parent process ID
+                        try:
+                            ppid_result = subprocess.run(
+                                ["ps", "-o", "ppid=", "-p", str(current_pid)],
+                                capture_output=True,
+                                text=True,
+                                check=True
+                            )
+                            ppid = int(ppid_result.stdout.strip())
+                        except (ValueError, subprocess.CalledProcessError):
+                            ppid = None
+
+                        # Check if this process has other idflow worker start processes as children
+                        has_worker_children = False
+                        try:
+                            children_result = subprocess.run(
+                                ["ps", "--ppid", str(current_pid), "-o", "pid="],
+                                capture_output=True,
+                                text=True,
+                                check=True
+                            )
+                            child_pids = children_result.stdout.strip().split('\n')
+                            child_pids = [pid.strip() for pid in child_pids if pid.strip()]
+
+                            # Check if any children are idflow worker processes
+                            for child_pid in child_pids:
+                                if child_pid:
+                                    child_result = subprocess.run(
+                                        ["ps", "-p", child_pid, "-o", "command="],
+                                        capture_output=True,
+                                        text=True,
+                                        check=True
+                                    )
+                                    if "idflow worker start" in child_result.stdout:
+                                        has_worker_children = True
+                                        break
+                        except (subprocess.CalledProcessError, ValueError):
+                            pass
+
+                        if has_worker_children:
+                            process_type = "cli"
+                        else:
+                            # Use the helper function to determine process type
+                            try:
+                                memory_usage = float(parts[3])
+                                process_type = determine_process_type(current_pid, ppid, memory_usage)
+                            except (ValueError, IndexError):
+                                process_type = "unknown"
+                    except (ValueError, IndexError):
+                        process_type = "unknown"
+                else:
+                    process_type = "unknown"
 
                 # If no pattern provided, match all workers
                 # If pattern provided, check if it's contained in worker name
@@ -214,7 +431,7 @@ def kill_workers(
                     if len(parts) >= 2:
                         try:
                             pid = int(parts[1])
-                            matching_pids.append((pid, line, worker_name))
+                            matching_pids.append((pid, line, worker_name, process_type))
                         except ValueError:
                             continue
 
@@ -227,9 +444,9 @@ def kill_workers(
         typer.echo(f"Found {len(matching_pids)} worker processes matching {pattern_desc}:")
         typer.echo("WORKER                    USER       PID  %CPU %MEM    VSZ   RSS TTY      STAT START   TIME")
 
-        for pid, line, worker_name in matching_pids:
-            # Format worker name to fit in 25 characters
-            worker_display = worker_name[:25].ljust(25)
+        for pid, line, worker_name, process_type in matching_pids:
+            # Format worker name and process type to fit in 25 characters
+            worker_display = f"{worker_name} ({process_type})"[:25].ljust(25)
 
             # Parse the ps output
             parts = line.split()
@@ -250,18 +467,18 @@ def kill_workers(
         # Kill the processes
         killed_count = 0
         signal_name = "SIGKILL" if kill else "SIGTERM"
-        for pid, line, worker_name in matching_pids:
+        for pid, line, worker_name, process_type in matching_pids:
             try:
                 signal_to_use = signal.SIGKILL if kill else signal.SIGTERM
                 os.kill(pid, signal_to_use)
                 killed_count += 1
-                typer.echo(f"Killed PID {pid} ({worker_name}) with {signal_name}")
+                typer.echo(f"Killed PID {pid} ({worker_name} - {process_type}) with {signal_name}")
             except ProcessLookupError:
-                typer.echo(f"Process {pid} ({worker_name}) already terminated")
+                typer.echo(f"Process {pid} ({worker_name} - {process_type}) already terminated")
             except PermissionError:
-                typer.echo(f"Permission denied to kill PID {pid} ({worker_name})")
+                typer.echo(f"Permission denied to kill PID {pid} ({worker_name} - {process_type})")
             except Exception as e:
-                typer.echo(f"Error killing PID {pid} ({worker_name}): {e}")
+                typer.echo(f"Error killing PID {pid} ({worker_name} - {process_type}): {e}")
 
         typer.echo(f"Killed {killed_count} processes")
 
@@ -327,21 +544,118 @@ def start_workers(
         configuration=config
     )
 
+    # Global variable to track if shutdown is in progress
+    shutdown_in_progress = False
+    worker_pids = []
+    current_pid = os.getpid()
+
     def signal_handler(signum, frame):
-        typer.echo("\nShutting down workers...")
-        task_handler.stop_processes()
+        nonlocal shutdown_in_progress
+        if shutdown_in_progress:
+            # Force exit if already shutting down
+            print("\nForce shutdown...")
+            sys.exit(1)
+
+        shutdown_in_progress = True
+        print("\nShutting down workers...")
+
+        try:
+            # Try to stop processes gracefully
+            task_handler.stop_processes()
+        except Exception as e:
+            print(f"Error during graceful shutdown: {e}")
+
+        # Also kill any remaining worker processes directly
+        # Only kill processes that are children of the current process
+        try:
+            result = subprocess.run(
+                ["ps", "aux"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            lines = result.stdout.split('\n')
+            killed_count = 0
+            for line in lines:
+                if ('worker start' in line and
+                    'worker ps' not in line and
+                    'worker killall' not in line and
+                    'worker list' not in line and
+                    not line.startswith('USER')):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            pid = int(parts[1])
+                            # Check if this process is a child of the current process
+                            # by checking if it's in our worker_pids list or if it's a direct child
+                            if pid in worker_pids or is_child_process(pid, current_pid):
+                                os.kill(pid, signal.SIGTERM)
+                                killed_count += 1
+                        except (ValueError, ProcessLookupError, PermissionError):
+                            pass
+
+            if killed_count > 0:
+                print(f"Killed {killed_count} worker processes")
+        except Exception as e:
+            print(f"Error killing remaining processes: {e}")
+
+        print("Workers stopped.")
         sys.exit(0)
 
+    # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
         typer.echo("Workers started. Press Ctrl+C to stop.")
         task_handler.start_processes()
-        # task_handler.join_processes()
-    except KeyboardInterrupt:
-        typer.echo("\nShutting down workers...")
-        task_handler.stop_processes()
+
+        # Track worker PIDs after starting
+        result = subprocess.run(
+            ["ps", "aux"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        lines = result.stdout.split('\n')
+        for line in lines:
+            if ('worker start' in line and
+                'worker ps' not in line and
+                'worker killall' not in line and
+                'worker list' not in line and
+                not line.startswith('USER')):
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        pid = int(parts[1])
+                        # Only add if it's a child of current process
+                        if is_child_process(pid, current_pid):
+                            worker_pids.append(pid)
+                    except (ValueError, ProcessLookupError):
+                        pass
+
+        # Keep the main thread alive and wait for workers
+        # Use a more robust approach to handle interrupts
+        while not shutdown_in_progress:
+            time.sleep(0.1)
+
+    except Exception as e:
+        if not shutdown_in_progress:
+            typer.echo(f"Error starting workers: {e}")
+            try:
+                task_handler.stop_processes()
+            except Exception as stop_error:
+                typer.echo(f"Error during cleanup: {stop_error}")
+            sys.exit(1)
+    finally:
+        # Ensure cleanup happens even if something goes wrong
+        if not shutdown_in_progress:
+            try:
+                task_handler.stop_processes()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
