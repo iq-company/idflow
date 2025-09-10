@@ -18,6 +18,10 @@ class Stage(Document):
     """
 
     def __init__(self, name: str, parent: Document, counter: int = 1, **kwargs):
+        # Validate that parent is a Document, not a Stage
+        if isinstance(parent, Stage):
+            raise ValueError(f"Stage parent must be a Document, not a Stage. Got: {type(parent)}")
+
         # Filter out name and counter from kwargs to avoid conflicts
         stage_kwargs = {k: v for k, v in kwargs.items() if k not in ['name', 'counter']}
 
@@ -177,3 +181,14 @@ class Stage(Document):
         elif not requirements_met and self.status == "active":
             # Requirements no longer met and stage is active -> cancel
             self.status = "cancelled"
+
+    def after_create(self) -> None:
+        """Override after_create to prevent stage evaluation on stages."""
+        # Stages should not trigger stage evaluation like documents do
+        # Just call the parent's before_create behavior without evaluation
+        pass
+
+    def after_save(self) -> None:
+        """Override after_save to prevent stage evaluation on stages."""
+        # Stages should not trigger stage evaluation like documents do
+        pass

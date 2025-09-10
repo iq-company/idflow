@@ -1,58 +1,47 @@
 {
   "name": "stage_workflow",
-  "version": 13,
+  "version": 15,
   "schemaVersion": 2,
   "inputParameters": [
     "docId",
     "stageName",
     "stageCounter",
-    "workflows"
+    "workflows",
+    "dynamicForkTasksParam"
   ],
   "tasks": [
     {
+      "name": "prepare_stage_subworkflows",
+      "taskReferenceName": "prepare_workflows",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "docId": "${workflow.input.docId}",
+        "stageName": "${workflow.input.stageName}",
+        "stageCounter": "${workflow.input.stageCounter}"
+      },
+      "taskDefinition": {
+        "name": "prepare_stage_subworkflows",
+        "version": 1,
+        "ownerEmail": "idflow@example.com",
+        "timeoutSeconds": 60,
+        "responseTimeoutSeconds": 30
+      }
+    },
+    {
       "name": "execute_workflows",
       "taskReferenceName": "execute",
-      "type": "FORK_JOIN",
-      "forkTasks": [
-        [
-          {
-            "name": "sub_workflow_1",
-            "taskReferenceName": "sub1",
-            "type": "SUB_WORKFLOW",
-                  "subWorkflowParam": {
-                    "name": "sub_workflow_1",
-                    "version": 2
-                  },
-            "inputParameters": {
-              "docId": "${workflow.input.docId}",
-              "stageName": "${workflow.input.stageName}",
-              "stageCounter": "${workflow.input.stageCounter}"
-            }
-          }
-        ],
-        [
-          {
-            "name": "sub_workflow_2",
-            "taskReferenceName": "sub2",
-            "type": "SUB_WORKFLOW",
-                  "subWorkflowParam": {
-                    "name": "sub_workflow_2",
-                    "version": 2
-                  },
-            "inputParameters": {
-              "docId": "${workflow.input.docId}",
-              "stageName": "${workflow.input.stageName}",
-              "stageCounter": "${workflow.input.stageCounter}"
-            }
-          }
-        ]
-      ]
+      "type": "FORK_JOIN_DYNAMIC",
+      "inputParameters": {
+        "dynamicTasks": "${prepare_workflows.output.dynamicForkTasksParam}",
+        "dynamicTasksInput": "${prepare_workflows.output.dynamicForkTasksInput}"
+      },
+      "dynamicForkTasksParam": "dynamicTasks",
+      "dynamicForkTasksInputParamName": "dynamicTasksInput"
     },
     {
       "name": "join_workflows",
       "taskReferenceName": "join_workflows",
-      "type": "JOIN",
-      "joinOn": ["sub1", "sub2"]
+      "type": "JOIN"
     },
     {
       "name": "update_stage_status",
