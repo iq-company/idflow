@@ -192,3 +192,57 @@ class Stage(Document):
         """Override after_save to prevent stage evaluation on stages."""
         # Stages should not trigger stage evaluation like documents do
         pass
+
+    def persist_sub_doc(self, filename: str, content: str) -> Path:
+        """
+        Persistiert einen Sub-Dokument-Inhalt als einfache Markdown-Datei.
+
+        Args:
+            filename: Name der Datei (ohne .md Extension)
+            content: Der Inhalt der Datei
+
+        Returns:
+            Path zur erstellten Datei
+        """
+        from .io import ensure_dir
+
+        # Stelle sicher, dass das Stage-Verzeichnis existiert
+        ensure_dir(self.stage_path)
+
+        # Erstelle den Dateipfad
+        file_path = self.stage_path / f"{filename}.md"
+
+        # Schreibe den Inhalt
+        file_path.write_text(content, encoding='utf-8')
+
+        return file_path
+
+    def persist_sub_doc_frontmatter(self, filename: str, content_dict: Dict[str, Any]) -> Path:
+        """
+        Persistiert einen Sub-Dokument-Inhalt als Markdown-Datei mit Frontmatter.
+
+        Args:
+            filename: Name der Datei (ohne .md Extension)
+            content_dict: Dictionary mit Frontmatter-Daten und 'body' oder 'content' für den Hauptinhalt
+
+        Returns:
+            Path zur erstellten Datei
+        """
+        from .io import ensure_dir, write_frontmatter
+
+        # Stelle sicher, dass das Stage-Verzeichnis existiert
+        ensure_dir(self.stage_path)
+
+        # Erstelle den Dateipfad
+        file_path = self.stage_path / f"{filename}.md"
+
+        # Extrahiere den Hauptinhalt
+        body_content = content_dict.get('body', '')
+
+        # Entferne body/content aus dem Dict für das Frontmatter
+        frontmatter_data = {k: v for k, v in content_dict.items() if k not in ['body', 'content']}
+
+        # Schreibe mit Frontmatter
+        write_frontmatter(file_path, frontmatter_data, body_content)
+
+        return file_path

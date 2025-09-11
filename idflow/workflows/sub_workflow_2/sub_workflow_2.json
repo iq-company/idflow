@@ -15,6 +15,15 @@
       "inputParameters": {
         "message": "Sub-workflow 2 executed"
       }
+    },
+    {
+      "name": "create_test_doc",
+      "taskReferenceName": "create_test_doc",
+      "type": "INLINE",
+      "inputParameters": {
+        "evaluatorType": "javascript",
+        "expression": "({ doc: { title: 'Hello from sub_workflow_2', body: 'This is a test document created by sub_workflow_2' } })"
+      }
     }
   ],
   "outputParameters": {
@@ -22,7 +31,8 @@
     "stageName": "${workflow.input.stageName}",
     "stageCounter": "${workflow.input.stageCounter}",
     "subWorkflow": "sub_workflow_2",
-    "status": "completed"
+    "status": "completed",
+    "doc": "${create_test_doc.output.result.doc}"
   },
   "ownerEmail": "idflow@example.com"
 }

@@ -1,0 +1,65 @@
+{
+  "name": "wrap_stage_subworkflow",
+  "description": "Wrapper workflow that runs a sub-workflow and then persists its result",
+  "version": 1,
+  "tasks": [
+    {
+      "name": "build_dynamic_subworkflow",
+      "taskReferenceName": "build_dynamic_sub",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "subworkflow_name": "${workflow.input.subworkflow_name}",
+        "subworkflow_version": "${workflow.input.subworkflow_version}",
+        "docId": "${workflow.input.docId}",
+        "stageName": "${workflow.input.stageName}",
+        "stageCounter": "${workflow.input.stageCounter}"
+      }
+    },
+    {
+      "name": "execute_inner",
+      "taskReferenceName": "execute_inner",
+      "type": "FORK_JOIN_DYNAMIC",
+      "inputParameters": {
+        "dynamicTasks": "${build_dynamic_sub.output.dynamicTasks}",
+        "dynamicTasksInput": "${build_dynamic_sub.output.dynamicTasksInput}"
+      },
+      "dynamicForkTasksParam": "dynamicTasks",
+      "dynamicForkTasksInputParamName": "dynamicTasksInput"
+    },
+    {
+      "name": "join_inner",
+      "taskReferenceName": "join_inner",
+      "type": "JOIN"
+    },
+    {
+      "name": "persist_stage_sub_wf_result",
+      "taskReferenceName": "persist_stage_sub_wf_result",
+      "type": "SIMPLE",
+      "inputParameters": {
+        "workflow_results": "${join_inner.output.inner_sub}",
+        "doc_id": "${workflow.input.docId}",
+        "stage_name": "${workflow.input.stageName}",
+        "stage_counter": "${workflow.input.stageCounter}",
+        "sub_workflow_name": "${workflow.input.subworkflow_name}"
+      }
+    }
+  ],
+  "inputParameters": [
+    "docId",
+    "stageName",
+    "stageCounter",
+    "subworkflow_name",
+    "subworkflow_version"
+  ],
+  "outputParameters": {
+    "subworkflow_output": "${join_inner.output.inner_sub}",
+    "persist_output": "${persist_stage_sub_wf_result.output}"
+  },
+  "timeoutSeconds": 300,
+  "timeoutPolicy": "TIME_OUT_WF",
+  "retryCount": 0,
+  "retryLogic": "FIXED",
+  "retryDelaySeconds": 60,
+  "responseTimeoutSeconds": 360,
+  "ownerEmail": "idflow@example.com"
+}

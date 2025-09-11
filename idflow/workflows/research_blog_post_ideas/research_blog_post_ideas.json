@@ -30,47 +30,26 @@
     {
       "name": "parallel_research",
       "taskReferenceName": "parallel_research",
-      "type": "FORK_JOIN_DYNAMIC",
-      "dynamicForkTasksParam": "dynamicTasks",
-      "dynamicForkTasksInputParamName": "dynamicTasksInput",
-      "inputParameters": {
-        "dynamicTasks": [
+      "type": "FORK_JOIN",
+      "forkTasks": [
+        [
           {
-            "name": "gpt_researcher_workflow",
+            "name": "gpt_researcher_task",
             "taskReferenceName": "gpt_research",
-            "type": "SUB_WORKFLOW",
-            "subWorkflowParam": {
-              "name": "gpt_researcher",
-              "version": 1
-            }
-          },
-          {
-            "name": "duckduckgo_serp_workflow",
-            "taskReferenceName": "serp_research",
-            "type": "SUB_WORKFLOW",
-            "subWorkflowParam": {
-              "name": "duckduckgo_serp",
-              "version": 1
+            "type": "SIMPLE",
+            "inputParameters": {
+              "query": "${extract_topics.output.result.research_query}",
+              "docId": "${workflow.input.docId}"
             }
           }
-        ],
-        "dynamicTasksInput": {
-          "gpt_research": {
-            "query": "${extract_topics.output.result.research_query}",
-            "docId": "${workflow.input.docId}"
-          },
-          "serp_research": {
-            "query": "${extract_topics.output.result.research_query}",
-            "docId": "${workflow.input.docId}"
-          }
-        }
-      }
+        ]
+      ]
     },
     {
       "name": "join_research_results",
       "taskReferenceName": "join_research",
       "type": "JOIN",
-      "joinOn": ["gpt_research", "serp_research"]
+      "joinOn": ["gpt_research"]
     },
     {
       "name": "consolidate_research_results",
@@ -78,10 +57,9 @@
       "type": "INLINE",
       "inputParameters": {
         "evaluatorType": "javascript",
-        "gpt_results": "${parallel_research.output.gpt_research}",
-        "serp_results": "${parallel_research.output.serp_research}",
+        "gpt_results": "${gpt_research.output}",
         "docId": "${workflow.input.docId}",
-        "expression": "(function(){\n  // Consolidate results from both research methods\n  var gptData = $.gpt_results || {};\n  var serpData = $.serp_results || {};\n  \n  var consolidated = {\n    docId: $.docId,\n    research_methods: ['gpt_researcher', 'duckduckgo_serp'],\n    results: {\n      gpt_researcher: gptData,\n      duckduckgo_serp: serpData\n    },\n    summary: 'Research completed using GPT Researcher and DuckDuckGo SERP methods',\n    timestamp: new Date().toISOString()\n  };\n  \n  return consolidated;\n})()"
+        "expression": "(function(){\n  // Consolidate results from GPT research\n  var gptData = $.gpt_results || {};\n  \n  // Create consolidated result with doc attribute for stage workflow compatibility\n  var consolidated = {\n    docId: $.docId,\n    research_methods: ['gpt_researcher'],\n    results: {\n      gpt_researcher: gptData\n    },\n    summary: 'Research completed using GPT Researcher method',\n    timestamp: new Date().toISOString(),\n    doc: {\n      content: 'Research completed for: ' + (gptData.query || 'unknown query') + '\\n\\n' + (gptData.summary || 'No summary available'),\n      title: 'Research Results: ' + (gptData.query || 'Unknown Query'),\n      type: 'research_results',\n      created_at: new Date().toISOString()\n    }\n  };\n  \n  return consolidated;\n})()"
       }
     },
     {
@@ -91,13 +69,14 @@
       "inputParameters": {
         "evaluatorType": "javascript",
         "results": "${consolidate.output.result}",
-        "expression": "(function(){\n  // In a real implementation, this would save to the document store\n  // For now, we'll just return success\n  return {\n    success: true,\n    message: 'Research results saved successfully',\n    results: $.results\n  };\n})()"
+        "expression": "(function(){\n  // Return the consolidated results with doc attribute\n  var consolidated = $.results || {};\n  \n  return {\n    success: true,\n    message: 'Research results processed successfully',\n    results: consolidated,\n    doc: consolidated.doc || null\n  };\n})()"
       }
     }
   ],
   "outputParameters": {
     "researchResults": "${save_results.output.result.results}",
-    "success": "${save_results.output.result.success}"
+    "success": "${save_results.output.result.success}",
+    "doc": "${save_results.output.result.doc}"
   },
   "ownerEmail": "idflow@example.com"
 }

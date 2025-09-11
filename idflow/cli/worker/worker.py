@@ -129,21 +129,14 @@ def extract_task_name_from_file(task_file: Path) -> Optional[str]:
 
 def load_task_function(task_file: Path, task_name: str):
     """Load the task function from a Python file."""
-    spec = importlib.util.spec_from_file_location('task_module', str(task_file))
-    task_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(task_module)
-
-    # # Get the task function - try common function names
-    # task_func = None
-    # for func_name in ['execute', task_name, 'main']:
-    #     task_func = getattr(task_module, func_name, None)
-    #     if task_func:
-    #         break
-
-    # if not task_func:
-    #     raise ValueError(f'No task function found in {task_file}. Available functions: {[name for name in dir(task_module) if not name.startswith("_")]}')
-
-    # return task_func
+    try:
+        spec = importlib.util.spec_from_file_location('task_module', str(task_file))
+        task_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(task_module)
+    except ImportError as e:
+        typer.echo(f"✗ Failed to load worker {task_name}: Missing dependencies")
+        typer.echo(f"  Install with: pip install idflow[ <dep-category> ]")
+        typer.echo(f"  Error details: {e}")
 
 
 @app.command("list")
@@ -527,12 +520,10 @@ def start_workers(
     conductor_config = Configuration()
 
     # Store worker configurations for potential restart
-    worker_configs = []
     workers = []
     for task_file, task_name in selected_workers:
         try:
             load_task_function(task_file, task_name)
-            # worker_configs.append((task_file, task_name))
         except Exception as e:
             typer.echo(f"✗ Failed to load worker {task_name}: {e}")
 
