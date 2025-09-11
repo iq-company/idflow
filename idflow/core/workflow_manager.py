@@ -2,8 +2,8 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
-from typing import Dict, List, Any, Optional
-from .conductor_client import upload_workflow
+from typing import Dict, List, Any, Optional, Tuple
+from .conductor_client import upload_workflow, _get_base_url, _get_headers
 
 # TODO: upload_tasks wird nicht mehr benötigt oder?
 # TODO: check ob die workflow updates gut gemacht sind. Eigentlich sollen keine Löschungen (für ein replace) erfolgen (sondern erhöhte versionsnr); bzw. wenn dann, nur über eine force definition
@@ -236,41 +236,6 @@ class WorkflowManager:
 
         return results
 
-    def upload_tasks(self, force: bool = False) -> Dict[str, bool]:
-        """Upload all task definitions to Conductor."""
-        results = {}
-        tasks = self.discover_tasks()
-
-        print(f"Found {len(tasks)} task files")
-
-        for task_file in tasks:
-            task_def = self.load_task_definition(task_file)
-            if not task_def:
-                results[task_file.name] = False
-                continue
-
-            task_name = task_def.get('name')
-            if not task_name:
-                print(f"No name found in task {task_file}")
-                results[task_file.name] = False
-                continue
-
-            # Check if upload is needed
-            if not force and not self.needs_upload(task_name, task_file, is_workflow=False):
-                print(f"Task {task_name} is up to date")
-                results[task_name] = True
-                continue
-
-            # Upload task
-            success = self.conductor_client.upload_task_definition(task_def)
-            results[task_name] = success
-
-            if success:
-                print(f"✓ Uploaded task: {task_name}")
-            else:
-                print(f"✗ Failed to upload task: {task_name}")
-
-        return results
 
     def upload_all(self, force: bool = False) -> Dict[str, Dict[str, bool]]:
         """Upload all workflows and tasks."""
@@ -307,6 +272,226 @@ class WorkflowManager:
                 names.append(task_def['name'])
 
         return names
+
+    def list_workflows_remote(self) -> List[Dict[str, Any]]:
+        """List all workflows from Conductor."""
+        try:
+            import requests
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            response = requests.get(f"{base_url}/metadata/workflow", headers=headers)
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Error fetching workflows from Conductor: {response.status_code} - {response.text}")
+                return []
+        except Exception as e:
+            print(f"Error connecting to Conductor: {e}")
+            return []
+
+    def list_tasks_remote(self) -> List[Dict[str, Any]]:
+        """List all task definitions from Conductor."""
+        try:
+            import requests
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            response = requests.get(f"{base_url}/metadata/taskdefs", headers=headers)
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Error fetching tasks from Conductor: {response.status_code} - {response.text}")
+                return []
+        except Exception as e:
+            print(f"Error connecting to Conductor: {e}")
+            return []
+
+    def get_workflow_sync_status(self) -> Dict[str, Any]:
+        """Get synchronization status between local and remote workflows."""
+        local_workflows = self.list_workflows()
+        remote_workflows = self.list_workflows_remote()
+
+        # Create sets for comparison
+        local_names = set(local_workflows)
+        remote_names = set()
+
+        # Group remote workflows by name
+        remote_workflow_versions = {}
+        for wf in remote_workflows:
+            name = wf.get('name')
+            version = wf.get('version', 1)
+            if name:
+                remote_names.add(name)
+                if name not in remote_workflow_versions:
+                    remote_workflow_versions[name] = []
+                remote_workflow_versions[name].append(version)
+
+        # Find differences
+        only_local = local_names - remote_names
+        only_remote = remote_names - local_names
+        common = local_names & remote_names
+
+        return {
+            'local': local_workflows,
+            'remote': list(remote_names),
+            'only_local': list(only_local),
+            'only_remote': list(only_remote),
+            'common': list(common),
+            'remote_versions': remote_workflow_versions
+        }
+
+    def get_task_sync_status(self) -> Dict[str, Any]:
+        """Get synchronization status between local and remote tasks."""
+        local_tasks = self.list_tasks()
+        remote_tasks = self.list_tasks_remote()
+
+        # Create sets for comparison
+        local_names = set(local_tasks)
+        remote_names = set()
+
+        for task in remote_tasks:
+            name = task.get('name')
+            if name:
+                remote_names.add(name)
+
+        # Find differences
+        only_local = local_names - remote_names
+        only_remote = remote_names - local_names
+        common = local_names & remote_names
+
+        return {
+            'local': local_tasks,
+            'remote': list(remote_names),
+            'only_local': list(only_local),
+            'only_remote': list(only_remote),
+            'common': list(common)
+        }
+
+    def upload_task(self, task_name: str, force: bool = False) -> bool:
+        """Upload a single task to Conductor."""
+        # Find the task file
+        tasks = self.discover_tasks()
+        task_file = None
+
+        for t_file in tasks:
+            task_def = self.load_task_definition(t_file)
+            if task_def and task_def.get('name') == task_name:
+                task_file = t_file
+                break
+
+        if not task_file:
+            print(f"Task '{task_name}' not found in local files")
+            return False
+
+        # Load task definition
+        task_def = self.load_task_definition(task_file)
+        if not task_def:
+            print(f"Failed to load task definition from {task_file}")
+            return False
+
+        # Upload task
+        try:
+            import requests
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            response = requests.post(
+                f"{base_url}/metadata/taskdefs",
+                json=[task_def],  # Conductor expects an array
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                print(f"✓ Uploaded task: {task_name}")
+                return True
+            else:
+                print(f"✗ Failed to upload task {task_name}: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"✗ Failed to upload task {task_name}: {e}")
+            return False
+
+    def upload_tasks(self, force: bool = False) -> Dict[str, bool]:
+        """Upload all task definitions to Conductor."""
+        results = {}
+        tasks = self.discover_tasks()
+
+        print(f"Found {len(tasks)} task files")
+
+        for task_file in tasks:
+            task_def = self.load_task_definition(task_file)
+            if not task_def:
+                results[task_file.name] = False
+                continue
+
+            task_name = task_def.get('name')
+            if not task_name:
+                print(f"No name found in task {task_file}")
+                results[task_file.name] = False
+                continue
+
+            # Upload task
+            success = self.upload_task(task_name, force)
+            results[task_name] = success
+
+        return results
+
+    def purge_task(self, task_name: str, force: bool = False) -> bool:
+        """Purge a task from Conductor."""
+        if not force:
+            # Check if task is in use
+            if self._is_task_in_use(task_name):
+                print(f"Task '{task_name}' is currently in use. Use --force to purge anyway.")
+                return False
+
+        try:
+            import requests
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            response = requests.delete(
+                f"{base_url}/metadata/taskdefs/{task_name}",
+                headers=headers
+            )
+
+            if response.status_code == 200:
+                print(f"✓ Purged task: {task_name}")
+                return True
+            else:
+                print(f"✗ Failed to purge task {task_name}: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            print(f"✗ Failed to purge task {task_name}: {e}")
+            return False
+
+    def _is_task_in_use(self, task_name: str) -> bool:
+        """Check if a task is currently in use by any workflow."""
+        try:
+            import requests
+            base_url = _get_base_url()
+            headers = _get_headers()
+
+            # Get all workflows
+            response = requests.get(f"{base_url}/metadata/workflow", headers=headers)
+            if response.status_code != 200:
+                return False
+
+            workflows = response.json()
+
+            # Check if task is referenced in any workflow
+            for workflow in workflows:
+                tasks = workflow.get('tasks', [])
+                for task in tasks:
+                    if task.get('name') == task_name:
+                        return True
+
+            return False
+        except Exception as e:
+            print(f"Warning: Could not check if task {task_name} is in use: {e}")
+            return True  # Assume in use if check fails
 
 
 # Global instance

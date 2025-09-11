@@ -37,37 +37,22 @@ def list_workflows(
 
     if conductor or all:
         typer.echo("Workflows in Conductor:")
-        try:
-            import requests
-            from idflow.core.conductor_client import _get_base_url, _get_headers
+        remote_workflows = workflow_manager.list_workflows_remote()
 
-            base_url = _get_base_url()
-            headers = _get_headers()
+        if not remote_workflows:
+            typer.echo("  No workflows found in Conductor")
+        else:
+            # Group by name and show versions
+            workflow_versions = {}
+            for wf in remote_workflows:
+                name = wf.get('name')
+                version = wf.get('version', 1)
+                if name:
+                    if name not in workflow_versions:
+                        workflow_versions[name] = []
+                    workflow_versions[name].append(version)
 
-            response = requests.get(f"{base_url}/metadata/workflow", headers=headers)
-
-            if response.status_code == 200:
-                existing_workflows = response.json()
-
-                if not existing_workflows:
-                    typer.echo("  No workflows found in Conductor")
-                else:
-                    # Group by name and show versions
-                    workflow_versions = {}
-                    for wf in existing_workflows:
-                        name = wf.get('name')
-                        version = wf.get('version', 1)
-                        if name:
-                            if name not in workflow_versions:
-                                workflow_versions[name] = []
-                            workflow_versions[name].append(version)
-
-                    for name in sorted(workflow_versions.keys()):
-                        versions = sorted(workflow_versions[name])
-                        version_str = ', '.join(f'v{v}' for v in versions)
-                        typer.echo(f"  {name} ({version_str})")
-            else:
-                typer.echo(f"  Error: {response.status_code} - {response.text}")
-
-        except Exception as e:
-            typer.echo(f"  Error connecting to Conductor: {e}")
+            for name in sorted(workflow_versions.keys()):
+                versions = sorted(workflow_versions[name])
+                version_str = ', '.join(f'v{v}' for v in versions)
+                typer.echo(f"  {name} ({version_str})")
