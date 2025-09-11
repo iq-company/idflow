@@ -13,8 +13,6 @@ from conductor.client.configuration.configuration import Configuration
 from conductor.client.worker.worker import Worker
 from conductor.client.automator.task_handler import TaskHandler
 
-from ...core.workflow_manager import get_workflow_manager
-
 
 def is_child_process(pid: int, parent_pid: int) -> bool:
     """Check if a process is a child of the parent process."""
@@ -121,6 +119,8 @@ def extract_task_name_from_file(task_file: Path) -> Optional[str]:
         match = re.search(r"@worker_task\(task_definition_name='([^']+)'\)", content)
         if match:
             return match.group(1)
+        else:
+            return task_file.name.replace(".py", "")
     except Exception:
         pass
 
@@ -133,17 +133,17 @@ def load_task_function(task_file: Path, task_name: str):
     task_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(task_module)
 
-    # Get the task function - try common function names
-    task_func = None
-    for func_name in ['execute', task_name, 'main']:
-        task_func = getattr(task_module, func_name, None)
-        if task_func:
-            break
+    # # Get the task function - try common function names
+    # task_func = None
+    # for func_name in ['execute', task_name, 'main']:
+    #     task_func = getattr(task_module, func_name, None)
+    #     if task_func:
+    #         break
 
-    if not task_func:
-        raise ValueError(f'No task function found in {task_file}. Available functions: {[name for name in dir(task_module) if not name.startswith("_")]}')
+    # if not task_func:
+    #     raise ValueError(f'No task function found in {task_file}. Available functions: {[name for name in dir(task_module) if not name.startswith("_")]}')
 
-    return task_func
+    # return task_func
 
 
 @app.command("list")
@@ -520,29 +520,67 @@ def start_workers(
 
     typer.echo(f"Starting {len(selected_workers)} workers...")
 
-    # Load all task functions
-    workers_list = []
+    # # Read configuration
+    # from ...core.config import get_config
+    # config = get_config()
+
+    conductor_config = Configuration()
+
+    # Store worker configurations for potential restart
+    worker_configs = []
+    workers = []
     for task_file, task_name in selected_workers:
         try:
             load_task_function(task_file, task_name)
-            # The @worker_task decorator should handle the task definition
-            typer.echo(f"✓ Loaded worker for {task_name}")
+            # worker_configs.append((task_file, task_name))
         except Exception as e:
             typer.echo(f"✗ Failed to load worker {task_name}: {e}")
 
-    # Create configuration
-    # TODO configuration needs to be created based on the config/idflow.yml settings.
-    from ...core.config import get_config
-    config = get_config() # TODO: generate global config utility
 
-    config = Configuration()
+    from conductor.client.automator.task_handler import _decorated_functions
+
+    for (task_def_name, domain) in _decorated_functions:
+        record = _decorated_functions[(task_def_name, domain)]
+
+        worker = Worker(
+            task_definition_name=task_def_name,
+            execute_function=record['func'],
+            worker_id=record['worker_id'],
+            domain=domain,
+            poll_interval=record['poll_interval'])
+        # logger.info(f'created worker with name={task_def_name} and domain={domain}')
+        workers.append(worker)
+
+    def _create_task_handler(workers):
+        if not workers:
+            return None
+
+        task_handler = TaskHandler(
+            workers=workers,
+            scan_for_annotated_workers=False,
+            configuration=conductor_config
+        )
+
+        # associate worker tasks_names with generated task_handler processes by index
+        for idx, worker in enumerate(workers):
+            process = task_handler.task_runner_processes[idx]
+            setattr(process, 'task_definition_name', worker.task_definition_name)
+
+        return task_handler
 
     # Create task handler
-    task_handler = TaskHandler(
-        workers=[],
-        scan_for_annotated_workers=True,
-        configuration=config
-    )
+    task_handlers = [_create_task_handler(workers)]
+
+    def _stop_task_handlers():
+        for task_handler in task_handlers:
+            running_processes = [p for p in task_handler.task_runner_processes if p.is_alive()]
+            for process in running_processes:
+                # os.kill(process.pid, signal.SIGTERM)
+                print(f"Killing process {process.pid} - {getattr(process, 'task_definition_name', '')}")
+                process.kill()
+            # task_handler.stop_processes()
+
+        task_handlers.clear()
 
     # Global variable to track if shutdown is in progress
     shutdown_in_progress = False
@@ -551,22 +589,21 @@ def start_workers(
 
     def signal_handler(signum, frame):
         nonlocal shutdown_in_progress
-        if shutdown_in_progress:
-            # Force exit if already shutting down
-            print("\nForce shutdown...")
-            sys.exit(1)
+        # if shutdown_in_progress:
+        #     # Force exit if already shutting down
+        #     print("\nForce shutdown...")
+        #     sys.exit(1)
 
         shutdown_in_progress = True
         print("\nShutting down workers...")
 
         try:
             # Try to stop processes gracefully
-            task_handler.stop_processes()
+            _stop_task_handlers()
         except Exception as e:
             print(f"Error during graceful shutdown: {e}")
 
-        # Also kill any remaining worker processes directly
-        # Only kill processes that are children of the current process
+        # Also kill any remaining worker processes directly (Only those that are children of the current process)
         try:
             result = subprocess.run(
                 ["ps", "aux"],
@@ -608,44 +645,51 @@ def start_workers(
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
+        task_handlers[0].start_processes()
         typer.echo("Workers started. Press Ctrl+C to stop.")
-        task_handler.start_processes()
 
-        # Track worker PIDs after starting
-        result = subprocess.run(
-            ["ps", "aux"],
-            capture_output=True,
-            text=True,
-            check=True
-        )
-
-        lines = result.stdout.split('\n')
-        for line in lines:
-            if ('worker start' in line and
-                'worker ps' not in line and
-                'worker killall' not in line and
-                'worker list' not in line and
-                not line.startswith('USER')):
-                parts = line.split()
-                if len(parts) >= 2:
-                    try:
-                        pid = int(parts[1])
-                        # Only add if it's a child of current process
-                        if is_child_process(pid, current_pid):
-                            worker_pids.append(pid)
-                    except (ValueError, ProcessLookupError):
-                        pass
-
-        # Keep the main thread alive and wait for workers
-        # Use a more robust approach to handle interrupts
+        # Monitor worker processes and restart them if they die
         while not shutdown_in_progress:
-            time.sleep(0.1)
+            # Check if any worker process is stopped and restart it
+            stopped_workers = []
+            unused_task_handlers = []
+
+            for task_handler in task_handlers:
+                stopped_processes = [p for p in task_handler.task_runner_processes if p.pid and not p.is_alive()]
+
+                for process in stopped_processes:
+                    task_definition_name = getattr(process, 'task_definition_name', None)
+
+                    typer.echo(f"✗ Worker process {process.pid} has died: {task_definition_name} - Restarting...")
+
+                    # detect corresponding worker
+                    if (worker := next((w for w in workers if w.task_definition_name == task_definition_name), None)) and worker not in stopped_workers:
+                        stopped_workers.append(worker)
+
+                # keep only alive and planned processes
+                task_handler.task_runner_processes = [process for process in task_handler.task_runner_processes if process not in stopped_processes]
+                if not task_handler.task_runner_processes:
+                    unused_task_handlers.append(task_handler)
+
+            # removing unused /stopped task handlers
+            task_handlers = [task_handler for task_handler in task_handlers if task_handler not in unused_task_handlers]
+
+            if stopped_workers:
+                for stopped_worker in stopped_workers:
+                    typer.echo(f"✓ Restarting worker {stopped_worker.task_definition_name}")
+
+                # creating new task handler for the stopped workers
+                new_task_handler = _create_task_handler(stopped_workers)
+                task_handlers.append(new_task_handler)
+                new_task_handler.start_processes()
+
+            time.sleep(1.0)  # Check every second
 
     except Exception as e:
         if not shutdown_in_progress:
             typer.echo(f"Error starting workers: {e}")
             try:
-                task_handler.stop_processes()
+                _stop_task_handlers()
             except Exception as stop_error:
                 typer.echo(f"Error during cleanup: {stop_error}")
             sys.exit(1)
@@ -653,7 +697,7 @@ def start_workers(
         # Ensure cleanup happens even if something goes wrong
         if not shutdown_in_progress:
             try:
-                task_handler.stop_processes()
+                _stop_task_handlers()
             except Exception:
                 pass
 
