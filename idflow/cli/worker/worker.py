@@ -91,7 +91,7 @@ def determine_process_type(current_pid: int, ppid: int, memory_usage: float) -> 
     except (subprocess.CalledProcessError, ValueError):
         return "unknown"
 
-app = typer.Typer(help="Manage Conductor task workers")
+app = typer.Typer(help="Manages task workers")
 
 
 def discover_worker_files() -> List[Path]:

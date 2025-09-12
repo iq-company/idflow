@@ -42,6 +42,21 @@ idflow init
 idflow init --add-feature research --add-feature writer
 ```
 
+### Smart Installation
+
+The `init` command automatically detects the installation source:
+
+- **🔧 Local Development**: If run within an idflow project directory, it uses the local development version with `pip install -e`
+- **📦 PyPI Installation**: If no local idflow project is found, it installs from PyPI
+
+**Examples:**
+```bash
+# In development environment (automatically uses local idflow)
+cd /path/to/idflow
+idflow init demo-project
+
+```
+
 ### Project Structure
 
 The `init` command creates:

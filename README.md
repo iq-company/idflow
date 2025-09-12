@@ -47,6 +47,16 @@ idflow doc add "My first document"
 idflow doc list
 ```
 
+### Development Mode
+
+If you're developing idflow itself, the `init` command automatically detects local development environments:
+
+```bash
+# In idflow project directory - uses local development version
+cd /path/to/idflow
+idflow init demo-project # creates empty project in sub folder demo/
+```
+
 ## 📋 Core Features
 
 - **📁 Markdown-first**: All documents as Markdown with YAML frontmatter

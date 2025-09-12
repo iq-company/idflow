@@ -1,7 +1,7 @@
 from __future__ import annotations
 import typer
 
-app = typer.Typer()
+app = typer.Typer(help="Manages local/remote workflows with versions")
 
 # Import workflow commands
 from .upload import upload_workflows

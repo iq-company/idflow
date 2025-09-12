@@ -177,5 +177,5 @@ Desktop.ini
 *~
 
 # Project specific
-data/active/
-data/inbox/
+data/
+demo/

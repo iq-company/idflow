@@ -8,7 +8,7 @@ from .drop_all import drop_all
 from .locate import locate
 from .show import show
 
-app = typer.Typer(add_completion=False)
+app = typer.Typer(help="Manages docs/ids for being inserted into or consumed from Pipelines", add_completion=False)
 app.command("add")(add)
 app.command("list")(list_docs)
 app.command("modify")(modify)

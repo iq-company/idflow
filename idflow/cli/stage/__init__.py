@@ -1,7 +1,7 @@
 from __future__ import annotations
 import typer
 
-app = typer.Typer()
+app = typer.Typer(help="Manages stages for documents")
 
 # Import stage commands
 from .run import run
