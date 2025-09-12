@@ -1,0 +1,20 @@
+name: core
+active: true
+
+# Core workflows required by the CLI/runtime itself
+workflows:
+  - name: stage_workflow
+  - name: wrap_stage_subworkflow
+
+# Additional static requirements
+requirements:
+  # No feature-gates here; core should always be active. Can be overridden in project.
+  features: []
+  # Tasks used by core workflows (for static mapping and worker visibility)
+  tasks:
+    - prepare_stage_subworkflows
+    - update_stage_status
+    - build_dynamic_subworkflow
+    - persist_stage_sub_wf_result
+
+

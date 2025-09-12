@@ -1,6 +1,5 @@
 from __future__ import annotations
 import json
-import hashlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from .conductor_client import upload_workflow, _get_base_url, _get_headers
@@ -13,15 +12,38 @@ class WorkflowManager:
     """Manages workflow and task definitions for Conductor."""
 
     def __init__(self, workflows_dir: Optional[Path] = None, tasks_dir: Optional[Path] = None):
-        self.workflows_dir = workflows_dir or Path("idflow/workflows")
-        self.tasks_dir = tasks_dir or Path("idflow/tasks")
+        # Keep attributes for backward compatibility when explicit dirs are passed
+        self.workflows_dir = workflows_dir
+        self.tasks_dir = tasks_dir
         self._last_upload_results = None
 
     def discover_workflows(self) -> List[Path]:
-        """Discover all workflow JSON files."""
-        workflows = []
-        for workflow_file in self.workflows_dir.rglob("*.json"):
-            if workflow_file.name != "event_handlers.json":  # Skip event handlers
+        """Discover workflow JSON files from project and package, with project overriding by name."""
+        # If an explicit directory was provided, use it as a single source
+        if self.workflows_dir is not None:
+            workflows: List[Path] = []
+            for workflow_file in self.workflows_dir.rglob("*.json"):
+                if workflow_file.name != "event_handlers.json":
+                    workflows.append(workflow_file)
+            return workflows
+
+        def _load_workflow_name(path: Path) -> Optional[str]:
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                return data.get('name')
+            except Exception:
+                return None
+
+        discovered: Dict[str, Path] = {}
+
+        # Use shared discovery util for overlay by directory names, then collect json files
+        from .discovery import overlay_workflow_dirs
+        workflows: List[Path] = []
+        for wf_dir in overlay_workflow_dirs().values():
+            for workflow_file in wf_dir.rglob("*.json"):
+                if workflow_file.name == "event_handlers.json":
+                    continue
                 workflows.append(workflow_file)
         return workflows
 
@@ -34,10 +56,33 @@ class WorkflowManager:
         return None
 
     def discover_tasks(self) -> List[Path]:
-        """Discover all task Python files."""
-        tasks = []
-        for task_file in self.tasks_dir.rglob("*.py"):
-            if task_file.name != "__init__.py":
+        """Discover task Python files from project and package, with project overriding by task name."""
+        # If an explicit directory was provided, use it as a single source
+        if self.tasks_dir is not None:
+            tasks: List[Path] = []
+            for task_file in self.tasks_dir.rglob("*.py"):
+                if task_file.name != "__init__.py":
+                    tasks.append(task_file)
+            return tasks
+
+        def _extract_task_name(path: Path) -> Optional[str]:
+            try:
+                content = path.read_text(encoding='utf-8')
+                if "@worker_task" not in content:
+                    return None
+                import re
+                m = re.search(r"@worker_task\(task_definition_name='([^']+)'\)", content)
+                return m.group(1) if m else None
+            except Exception:
+                return None
+
+        # Use shared discovery util for overlay by directory names, then collect .py files
+        from .discovery import overlay_task_dirs
+        tasks: List[Path] = []
+        for task_dir in overlay_task_dirs().values():
+            for task_file in task_dir.rglob("*.py"):
+                if task_file.name == "__init__.py":
+                    continue
                 tasks.append(task_file)
         return tasks
 

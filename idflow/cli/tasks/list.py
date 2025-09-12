@@ -1,6 +1,7 @@
 from __future__ import annotations
 import typer
 from idflow.core.workflow_manager import get_workflow_manager
+from idflow.core.discovery import required_task_names_static
 
 def list_tasks(
     local: bool = typer.Option(False, "--local", help="Show only local task files"),
@@ -47,6 +48,7 @@ def list_tasks(
     if local or all:
         typer.echo("Local task files:")
         tasks = workflow_manager.discover_tasks()
+        required = set(required_task_names_static())
 
         if not tasks:
             typer.echo("  No task files found")
@@ -55,7 +57,8 @@ def list_tasks(
                 task_def = workflow_manager.load_task_definition(task_file)
                 if task_def:
                     name = task_def.get('name', 'unknown')
-                    typer.echo(f"  {name}")
+                    suffix = "" if name in required else " (inactive)"
+                    typer.echo(f"  {name}{suffix}")
                 else:
                     typer.echo(f"  {task_file.name} (invalid)")
 

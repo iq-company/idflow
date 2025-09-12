@@ -95,18 +95,18 @@ app = typer.Typer(help="Manages task workers")
 
 
 def discover_worker_files() -> List[Path]:
-    """Discover all worker Python files."""
-    tasks_dir = Path("idflow/tasks")
-    worker_files = []
-
-    for task_file in tasks_dir.rglob("*.py"):
-        if task_file.name != "__init__.py":
-            with open(task_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-                if "@worker_task" in content:
-                    worker_files.append(task_file)
-
-    return worker_files
+    """Discover worker Python files from package and project (overlay by dir)."""
+    from idflow.core.discovery import overlay_task_dirs
+    files: List[Path] = []
+    for task_dir in overlay_task_dirs().values():
+        for p in task_dir.rglob("*.py"):
+            if p.name != "__init__.py":
+                try:
+                    if "@worker_task" in p.read_text(encoding='utf-8'):
+                        files.append(p)
+                except Exception:
+                    continue
+    return files
 
 
 def extract_task_name_from_file(task_file: Path) -> Optional[str]:
@@ -143,6 +143,8 @@ def load_task_function(task_file: Path, task_name: str):
 def list_workers():
     """List all available task workers."""
     worker_files = discover_worker_files()
+    from idflow.core.discovery import required_task_names_static
+    required = set(required_task_names_static())
 
     if not worker_files:
         typer.echo("No worker files found")
@@ -153,7 +155,8 @@ def list_workers():
     for task_file in worker_files:
         task_name = extract_task_name_from_file(task_file)
         if task_name:
-            typer.echo(f"  - {task_name} ({task_file})")
+            suffix = "" if task_name in required else " (inactive)"
+            typer.echo(f"  - {task_name}{suffix} ({task_file})")
         else:
             typer.echo(f"  - {task_file} (no task name found)")
 

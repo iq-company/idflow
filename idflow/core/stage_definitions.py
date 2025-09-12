@@ -1,7 +1,8 @@
 from __future__ import annotations
 import yaml
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+import importlib.resources as ir
+from typing import Dict, List, Optional, Any, Union
 from pydantic import BaseModel, Field
 
 
@@ -60,6 +61,10 @@ class Requirements(BaseModel):
     stages: Optional[Dict[str, StageRequirement]] = None
     attribute_checks: Optional[List[AttributeCheck]] = None
     list_checks: Optional[List[ListCheck]] = None
+    features: Optional[List[str]] = None
+    # optional list of additionally required task names for dynamic scheduling
+    # Accept either plain strings or objects with a 'name' field for convenience
+    tasks: Optional[List[Union[str, Dict[str, Any]]]] = None
 
 
 class StageDefinition(BaseModel):
@@ -74,6 +79,17 @@ class StageDefinition(BaseModel):
         """Check if the requirements for this stage are met for the given document."""
         if not self.requirements:
             return True
+
+        # Check feature requirements first (static, independent of document)
+        if self.requirements.features:
+            try:
+                from .optional_deps import is_optional_dependency_installed
+                for feature in self.requirements.features:
+                    if not is_optional_dependency_installed(feature):
+                        return False
+            except Exception:
+                # If the feature check fails, consider requirements not met
+                return False
 
         # Check file presence requirements
         if self.requirements.file_presence:
@@ -415,33 +431,48 @@ class StageDefinitions:
     """Manager for all stage definitions loaded from YAML files."""
 
     def __init__(self, stages_dir: Optional[Path] = None):
-        self.stages_dir = stages_dir or Path("idflow/stages")
+        # If stages_dir is provided, use only that directory; otherwise overlay package + project
+        self.stages_dir = stages_dir
         self._definitions: Dict[str, StageDefinition] = {}
         self._load_definitions()
 
     def _load_definitions(self) -> None:
-        """Load all stage definitions from YAML files."""
-        if not self.stages_dir.exists():
-            return
+        """Load all stage definitions from YAML files with package->project overlay."""
+        self._definitions.clear()
 
-        for yaml_file in self.stages_dir.glob("*.yml"):
-            try:
-                with open(yaml_file, 'r', encoding='utf-8') as f:
-                    data = yaml.safe_load(f)
-
-                if not data or not isinstance(data, dict):
+        def _load_dir(dir_path: Path) -> None:
+            if not dir_path.exists():
+                return
+            for yaml_file in dir_path.glob("*.yml"):
+                try:
+                    with open(yaml_file, 'r', encoding='utf-8') as f:
+                        data = yaml.safe_load(f)
+                    if not data or not isinstance(data, dict):
+                        continue
+                    stage_def = StageDefinition(**data)
+                    if stage_def.active:
+                        # assign/overlay by name
+                        self._definitions[stage_def.name] = stage_def
+                except Exception as e:
+                    print(f"Warning: Failed to load stage definition from {yaml_file}: {e}")
                     continue
 
-                # Create stage definition
-                stage_def = StageDefinition(**data)
+        # If explicit directory provided, load only there
+        if self.stages_dir is not None:
+            _load_dir(self.stages_dir)
+            return
 
-                # Only include active stages
-                if stage_def.active:
-                    self._definitions[stage_def.name] = stage_def
+        # 1) package stages
+        try:
+            pkg_root = Path(ir.files("idflow"))
+            pkg_stages = pkg_root / "stages"
+            _load_dir(pkg_stages)
+        except Exception:
+            pass
 
-            except Exception as e:
-                print(f"Warning: Failed to load stage definition from {yaml_file}: {e}")
-                continue
+        # 2) overlay with project stages
+        proj_stages = Path("stages")
+        _load_dir(proj_stages)
 
     def get_definition(self, stage_name: str) -> Optional[StageDefinition]:
         """Get a stage definition by name."""

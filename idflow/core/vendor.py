@@ -10,6 +10,7 @@ import importlib.resources as ir
 COPYABLE_DIRS: List[str] = [
     "tasks",
     "workflows",
+    "stages",
 ]
 
 def get_vendor_root() -> Path:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import typer
 from idflow.core.workflow_manager import get_workflow_manager
+from idflow.core.discovery import required_workflow_names_static
 
 
 def list_workflows(
@@ -35,6 +36,7 @@ def list_workflows(
     if show_local:
         typer.echo("Local workflow files:")
         workflows = workflow_manager.discover_workflows()
+        required_names = set(required_workflow_names_static())
 
         if not workflows:
             typer.echo("  No workflow files found")
@@ -44,7 +46,8 @@ def list_workflows(
                 if workflow_def:
                     name = workflow_def.get('name', 'unknown')
                     version = workflow_def.get('version', 1)
-                    typer.echo(f"  {name} v{version}")
+                    suffix = "" if name in required_names else " (inactive)"
+                    typer.echo(f"  {name} v{version}{suffix}")
                 else:
                     typer.echo(f"  {workflow_file.name} (invalid)")
 

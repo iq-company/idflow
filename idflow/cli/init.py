@@ -280,6 +280,26 @@ def init_project(
     # Create config directory
     config_dir = target_dir / "config"
     config_dir.mkdir(exist_ok=True)
+    # Create features.d and template
+    features_dir = config_dir / "features.d"
+    features_dir.mkdir(exist_ok=True)
+    features_template = features_dir / "features.toml"
+    if not features_template.exists():
+        tpl = """# Project feature definitions (modular). Add more files in config/features.d/ as needed.
+#
+# Example feature (uncomment and adjust):
+# [features.example]
+# packages = [
+#   "requests>=2.31.0",
+#   "beautifulsoup4>=4.12.0",
+#   "playwright>=1.40.0",
+# ]
+# extends = [
+#   # "research",  # inherit from package extra or another project feature
+# ]
+"""
+        features_template.write_text(tpl)
+        typer.echo("✅ Created config/features.d/features.toml")
 
     # Create basic config file if it doesn't exist
     config_file = config_dir / "idflow.yml"

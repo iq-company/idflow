@@ -97,6 +97,28 @@ requirements:
 - `HAS` / `CONTAINS` / `INCLUDES` - Contains value
 - `NOT_HAS` / `NOT_CONTAINS` / `NOT_INCLUDES` - Does not contain value
 
+### 5. Feature Requirements
+
+Gate a stage by optional features (extras or project-defined features). All listed features must be installed.
+
+```yaml
+requirements:
+  features:
+    - research
+    - test
+```
+
+### 6. Additional Task Requirements
+
+Declare additional required Conductor task names when tasks are dynamically scheduled or not statically discoverable.
+
+```yaml
+requirements:
+  tasks:
+    - prepare_stage_subworkflows
+    - update_stage_status
+```
+
 ## Pattern Matching Details
 
 ### Glob Pattern Matching
@@ -218,6 +240,14 @@ requirements:
       operator: NOT_HAS
       value: 'draft'
       case_sensitive: false
+
+  # Feature gates
+  features:
+    - research
+
+  # Additional required task names (for dynamic scheduling)
+  tasks:
+    - prepare_stage_subworkflows
 
   # Stage requirements
   stages:

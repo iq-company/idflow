@@ -35,14 +35,17 @@ dependencies = [
     "pydantic>=2",
     "PyYAML>=6",
     "conductor-python",
-    "litellm>=1.0.0",
-    "keybert>=0.9.0"
+    "requests>=2.31.0"
 ]
 
 [project.optional-dependencies]
+ai_prompts = [
+    "litellm>=1.0.0"
+]
+
 research = [
-    "requests>=2.31.0",
     "playwright>=1.40.0",
+    "keybert>=0.9.0",
     "beautifulsoup4>=4.12.0",
     "gpt-researcher>=0.1.0"
 ]
