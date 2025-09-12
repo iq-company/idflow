@@ -2,7 +2,15 @@
 
 ## Overview
 
-IdFlow uses Conductor for workflow orchestration. Workflows are defined as JSON files in the `idflow/workflows/` directory and need to be uploaded to Conductor before they can be executed.
+ID Flow verwendet Conductor für Workflow-Orchestrierung. Workflows werden als JSON-Dateien im `idflow/workflows/` Verzeichnis definiert und müssen zu Conductor hochgeladen werden, bevor sie ausgeführt werden können.
+
+## 🆕 Neue Features
+
+### Task-Management Integration
+- **Task-Synchronisation**: Automatische Synchronisation zwischen lokalen und Remote-Tasks
+- **Orphaned Task Cleanup**: Bereinigung von nicht mehr benötigten Remote-Tasks
+- **Usage-Check**: Sicherheitsprüfung vor Task-Löschung
+- **Bidirektionale Sync**: Vollständige Synchronisation in beide Richtungen
 
 ## Workflow Upload Strategy
 
@@ -10,36 +18,49 @@ IdFlow uses Conductor for workflow orchestration. Workflows are defined as JSON 
 
 **Important**: Workflows are NOT automatically uploaded during stage evaluation to avoid race conditions and database locks. Instead, they should be uploaded manually using the CLI command.
 
-### Manual Upload Command
+### Manual Upload Commands
 
 ```bash
 # Upload all workflows (with version checking)
-idflow worker upload
+idflow workflow upload
 
 # Force upload all workflows (ignores version checks)
-idflow worker upload --force
+idflow workflow upload --force
 
 # Upload specific workflow
-idflow worker upload --workflow workflow_name
+idflow workflow upload --workflow workflow_name
 
 # Force upload specific workflow
-idflow worker upload --workflow workflow_name --force
+idflow workflow upload --workflow workflow_name --force
 ```
 
-### List Workflows Command
+### Task Management Commands (NEW!)
 
 ```bash
-# List both local and Conductor workflows (default)
-idflow worker list
+# List and sync tasks
+idflow tasks list --sync
 
-# List only local workflow files
-idflow worker list --local
+# Upload all tasks
+idflow tasks upload --all
 
-# List only workflows in Conductor
-idflow worker list --conductor
+# Purge orphaned tasks
+idflow tasks purge --orphaned
+```
 
-# Explicitly list both (same as default)
-idflow worker list --all
+### List Commands
+
+```bash
+# List workflows (local and remote)
+idflow workflow list
+
+# List only local workflows
+idflow workflow list --local
+
+# List only remote workflows
+idflow workflow list --conductor
+
+# List tasks with sync status
+idflow tasks list --sync
 ```
 
 ### Upload Output Examples
@@ -142,12 +163,46 @@ Warning: Missing workflows: research_blog_post_ideas v2, sub_workflow_1 v2
 Run 'idflow worker upload' to upload missing workflows
 ```
 
+## 🔄 Task-Management Integration
+
+### Vollständige Synchronisation
+
+```bash
+# 1. Status prüfen
+idflow tasks list --sync
+idflow workflow list --conductor
+
+# 2. Tasks synchronisieren
+idflow tasks upload --all
+
+# 3. Workflows synchronisieren
+idflow workflow upload
+
+# 4. Orphaned Tasks bereinigen
+idflow tasks purge --orphaned
+```
+
+### Development Workflow
+
+1. **Tasks entwickeln**: Neue Tasks in `idflow/tasks/` erstellen
+2. **Tasks testen**: `idflow tasks upload task_name`
+3. **Workflows anpassen**: JSON-Dateien in `idflow/workflows/` modifizieren
+4. **Workflows testen**: `idflow workflow upload`
+5. **Integration testen**: `idflow stage evaluate`
+
+### Production Deployment
+
+1. **Vollständige Sync**: Alle Tasks und Workflows synchronisieren
+2. **Orphaned Cleanup**: Nicht mehr benötigte Tasks bereinigen
+3. **Worker starten**: `idflow worker start --all`
+4. **Monitoring**: Status regelmäßig überprüfen
+
 ## Best Practices
 
 ### Development Workflow
 
 1. Modify workflow JSON files
-2. Test locally with `idflow worker upload`
+2. Test locally with `idflow workflow upload`
 3. Verify workflows in Conductor UI
 4. Test stage evaluation
 

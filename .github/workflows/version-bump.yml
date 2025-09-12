@@ -1,0 +1,59 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'idflow/**/*.py'
+      - 'pyproject.toml'
+      - 'README.md'
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Check for version changes
+      id: version-check
+      run: |
+        # Check if pyproject.toml was modified
+        if ! git diff HEAD~1 HEAD --name-only | grep -q "pyproject.toml"; then
+          echo "version_changed=false" >> $GITHUB_OUTPUT
+          echo "No pyproject.toml changes detected"
+          exit 0
+        fi
+
+        echo "pyproject.toml was modified, checking version changes..."
+
+        # Use Python script for robust version checking
+        python scripts/version.py --check-change >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      if: steps.version-check.outputs.version_changed == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version-check.outputs.version }}
+        release_name: Release v${{ steps.version-check.outputs.version }}
+        body: |
+          Automated release triggered by version changes.
+
+          **Version**: ${{ steps.version-check.outputs.previous_version }} → ${{ steps.version-check.outputs.version }}
+
+          **Changes in this release:**
+          - See commit history for details
+          - Check CHANGELOG.md for detailed changes
+        draft: false
+        prerelease: false

@@ -5,7 +5,30 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "idflow"
 version = "0.1.0"
-description = "A document management and workflow system"
+description = "A Document Pipeline System with powerful capabilities to Research, Enrich, QA, Publish with Agentic Support"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Team IQ", email = "service@get-iq.com"}
+]
+maintainers = [
+    {name = "Team IQ", email = "service@get-iq.com"}
+]
+keywords = ["document-pipeline", "workflow", "ai", "agents", "research", "cli", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.8"
 dependencies = [
     "typer>=0.12",
@@ -15,6 +38,25 @@ dependencies = [
     "litellm>=1.0.0",
     "keybert>=0.9.0"
 ]
+
+[project.optional-dependencies]
+research = [
+    "requests>=2.31.0",
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "gpt-researcher>=0.1.0"
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/iq-company/idflow"
+Documentation = "https://github.com/iq-company/idflow#readme"
+Repository = "https://github.com/iq-company/idflow.git"
+"Bug Tracker" = "https://github.com/iq-company/idflow/issues"
+Changelog = "https://github.com/iq-company/idflow/blob/main/CHANGELOG.md"
 
 [project.scripts]
 idflow = "idflow.__main__:app"
