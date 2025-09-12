@@ -7,13 +7,18 @@
 ### Installation
 
 ```bash
-# For User (production)
+# For Users (recommended: use virtual environment)
+mkdir myproject && cd myproject
+python3 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# or: .venv\Scripts\activate  # Windows
+
 pip install idflow
 
-# Mit Research-Features (optional)
-pip install idflow[research]
+# With Features (optional)
+pip install idflow[research,writer]
 
-# For Devs
+# For Developers
 git clone https://github.com/iq-company/idflow.git
 cd idflow
 
@@ -26,47 +31,49 @@ source .venv/bin/activate  # Linux/Mac
 pip install -e .
 ```
 
-### Erste Schritte
+### First Steps
 
 ```bash
-# Projekt initialisieren
-mkdir myproject && cd myproject
+# Initialize current directory
 idflow init
 
-# Dokument hinzufügen
-echo "Mein erstes Dokument" | idflow doc add
+# With additional features
+idflow init myproject --add-feature research --add-feature writer
 
-# Dokumente auflisten
+# Add document
+idflow doc add "My first document"
+
+# List documents
 idflow doc list
 ```
 
-## 📋 Kernfunktionen
+## 📋 Core Features
 
-- **📁 Markdown-first**: Alle Dokumente als Markdown mit YAML-Frontmatter
-- **🆔 ID-basiert**: Jedes Dokument hat eine eindeutige ID als Ordnername
-- **🔄 Workflow-Automatisierung**: Conductor-basierte Workflow-Orchestrierung
-- **⚙️ Konfigurierbar**: Wählbare ORM-Implementierungen (Filesystem/Database)
-- **🔧 Erweiterbar**: Modulare Task- und Stage-Architektur
-- **💻 CLI-Interface**: Umfassende Kommandozeilen-Tools
+- **📁 Markdown-first**: All documents as Markdown with YAML frontmatter
+- **🆔 ID-based**: Each document has a unique ID as folder name
+- **🔄 Workflow Automation**: Conductor-based workflow orchestration
+- **⚙️ Configurable**: Selectable ORM implementations (Filesystem/Database)
+- **🔧 Extensible**: Modular task and stage architecture
+- **💻 CLI Interface**: Comprehensive command-line tools
 
-## 📚 Dokumentation
+## 📚 Documentation
 
-### Grundlagen
-- **[Architektur-Übersicht](docs/ARCHITECTURE_OVERVIEW.md)** - Systemarchitektur und Design-Prinzipien
-- **[ORM-System](docs/README_ORM.md)** - Dokumenten-ORM und Datenmodell
-- **[Requirements-System](docs/README_REQUIREMENTS.md)** - Stage-Requirements und Validierung
+### Fundamentals
+- **[Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md)** - System architecture and design principles
+- **[ORM System](docs/README_ORM.md)** - Document ORM and data model
+- **[Requirements System](docs/README_REQUIREMENTS.md)** - Stage requirements and validation
 
 ### CLI & Management
-- **[CLI-Referenz](docs/CLI.md)** - Vollständige CLI-Dokumentation
-- **[Workflow-Management](docs/WORKFLOW_MANAGEMENT.md)** - Workflow-Orchestrierung mit Conductor
-- **[Task-Management](docs/TASK_MANAGEMENT.md)** - Task-Entwicklung und -Management
+- **[CLI Reference](docs/CLI.md)** - Complete CLI documentation
+- **[Workflow Management](docs/WORKFLOW_MANAGEMENT.md)** - Workflow orchestration with Conductor
+- **[Task Management](docs/TASK_MANAGEMENT.md)** - Task development and management
 
-### Features & Erweiterungen
-- **[Research-Features](docs/README_RESEARCH_FEATURES.md)** - Web-Scraping und AI-Research
-- **[Worker-Framework](docs/WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor-Worker-Management
-- **[Entwicklung](docs/README_dev.md)** - Setup und Guidelines für Entwickler
+### Features & Extensions
+- **[Research Features](docs/README_RESEARCH_FEATURES.md)** - Web scraping and AI research
+- **[Worker Framework](docs/WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor worker management
+- **[Development](docs/README_dev.md)** - Setup and guidelines for developers
 
-## 🏗️ Architektur
+## 🏗️ Architecture
 
 ```
 ┌─────────┐    ┌─────────────┐    ┌─────────┐    ┌──────────┐    ┌─────────┐
@@ -75,63 +82,63 @@ idflow doc list
 └─────────┘    └─────────────┘    └─────────┘    └──────────┘    └─────────┘
 ```
 
-**Dokumenten-Lebenszyklus:**
-1. **Gather**: Dokumente aus verschiedenen Quellen sammeln
-2. **Enrich**: Metadaten hinzufügen, deduplizieren, bewerten
-3. **Generate**: Neue Inhalte erstellen (Blog-Posts, Social Media, etc.)
-4. **Publish**: Inhalte über verschiedene Kanäle verteilen
+**Document Lifecycle:**
+1. **Gather**: Collect documents from various sources
+2. **Enrich**: Add metadata, deduplicate, evaluate
+3. **Generate**: Create new content (blog posts, social media, etc.)
+4. **Publish**: Distribute content through various channels
 
 ## 🎯 Use Cases
 
-| Use Case | Beschreibung | Status |
+| Use Case | Description | Status |
 |----------|-------------|--------|
-| **Content-Marketing** | Von Social Trends zu eigenen Content-Pieces | ✅ |
-| **Visitor-Profiling** | Besucherdaten sammeln und anreichern | ✅ |
-| **E-Mail-Management** | E-Mails organisieren ohne Datenschutz-Bedenken | ✅ |
-| **Media-Analyse** | Podcasts, Videos analysieren und bewerten | ✅ |
-| **Dokumenten-Verarbeitung** | PDFs, Bilder mit OCR/MLLM verarbeiten | ✅ |
+| **Content Marketing** | From social trends to own content pieces | ✅ |
+| **Visitor Profiling** | Collect and enrich visitor data | ✅ |
+| **Email Management** | Organize emails without privacy concerns | ✅ |
+| **Media Analysis** | Analyze and evaluate podcasts, videos | ✅ |
+| **Document Processing** | Process PDFs, images with OCR/MLLM | ✅ |
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
 ```yaml
 # config/idflow.yml
 base_dir: "data"
 config_dir: "config"
-document_implementation: "fs_markdown"  # oder "database"
+document_implementation: "fs_markdown"  # or "database"
 conductor_server_url: "http://localhost:8080"
 ```
 
-## 🚀 Neueste Features
+## 🚀 Latest Features
 
-### Task-Management (Neu!)
+### Task Management (New!)
 ```bash
-# Tasks auflisten und synchronisieren
+# List and synchronize tasks
 idflow tasks list --sync
 
-# Tasks hochladen
+# Upload tasks
 idflow tasks upload --all
 
-# Orphaned Tasks bereinigen
+# Clean up orphaned tasks
 idflow tasks purge --orphaned
 ```
 
-### Workflow-Management
+### Workflow Management
 ```bash
-# Workflows auflisten
+# List workflows
 idflow workflow list --conductor
 
-# Workflows hochladen
+# Upload workflows
 idflow workflow upload --all
 ```
 
 ## 🤝 Contribute
 
-Wir freuen uns über Beiträge! Siehe [Entwicklungs-Guide](README_dev.md) für Details.
+We welcome contributions! See [Development Guide](README_dev.md) for details.
 
-## 📄 Lizenz
+## 📄 License
 
-MIT License - siehe [LICENSE](LICENSE) für Details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**ID Flow** - Organisiere, verarbeite und publiziere Dokumente mit ID-basierter Doc Anreicherung.
+**ID Flow** - Organize, process and publish documents with ID-based document enrichment.

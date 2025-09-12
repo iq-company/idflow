@@ -1,116 +1,116 @@
-# Dokumentations-Übersicht
+# Documentation Overview
 
-Diese Dokumentation ist in thematische Bereiche unterteilt, um die Navigation und das Verständnis zu verbessern.
+This documentation is organized into thematic areas to improve navigation and understanding.
 
-## 📚 Dokumentationsstruktur
+## 📚 Documentation Structure
 
-### 🏠 Hauptdokumentation
-- **[README.md](../README.md)** - Projektübersicht und Quick Start
-- **[Architektur-Übersicht](ARCHITECTURE_OVERVIEW.md)** - Systemarchitektur und Design-Prinzipien
+### 🏠 Main Documentation
+- **[README.md](../README.md)** - Project overview and quick start
+- **[Architecture Overview](ARCHITECTURE_OVERVIEW.md)** - System architecture and design principles
 
 ### 🔧 CLI & Management
-- **[CLI-Referenz](CLI.md)** - Vollständige Kommandozeilen-Dokumentation
-- **[Task-Management](TASK_MANAGEMENT.md)** - Task-Entwicklung und -Synchronisation
-- **[Workflow-Management](WORKFLOW_MANAGEMENT.md)** - Workflow-Orchestrierung mit Conductor
+- **[CLI Reference](CLI.md)** - Complete command-line documentation
+- **[Task Management](TASK_MANAGEMENT.md)** - Task development and synchronization
+- **[Workflow Management](WORKFLOW_MANAGEMENT.md)** - Workflow orchestration with Conductor
 
-### 🏗️ Kern-Systeme
-- **[ORM-System](README_ORM.md)** - Dokumenten-ORM und Datenmodell
-- **[Requirements-System](README_REQUIREMENTS.md)** - Stage-Requirements und Validierung
-- **[Worker-Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor-Worker-Management
+### 🏗️ Core Systems
+- **[ORM System](README_ORM.md)** - Document ORM and data model
+- **[Requirements System](README_REQUIREMENTS.md)** - Stage requirements and validation
+- **[Worker Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor worker management
 
-### 🚀 Features & Erweiterungen
-- **[Research-Features](README_RESEARCH_FEATURES.md)** - Web-Scraping und AI-Research
-- **[Entwicklung](README_dev.md)** - Setup und Guidelines für Entwickler
+### 🚀 Features & Extensions
+- **[Research Features](README_RESEARCH_FEATURES.md)** - Web scraping and AI research
+- **[Development](README_dev.md)** - Setup and guidelines for developers
 
-### 📋 Projekt-Management
-- **[Changelog](../CHANGELOG.md)** - Versionshistorie und Änderungen
-- **[Publishing](PUBLISHING.md)** - Release-Prozess und Veröffentlichung
-- **[Version Management](VERSION_MANAGEMENT.md)** - Versionsverwaltung
-- **[Changed Files Review](CHANGED_FILES_REVIEW.md)** - Änderungsübersicht
+### 📋 Project Management
+- **[Changelog](../CHANGELOG.md)** - Version history and changes
+- **[Publishing](PUBLISHING.md)** - Release process and publication
+- **[Version Management](VERSION_MANAGEMENT.md)** - Version management
+- **[Changed Files Review](CHANGED_FILES_REVIEW.md)** - Change overview
 
-## 🆕 Neue Features
+## 🆕 New Features
 
-### Task-Management (Neu!)
-Das neue Task-Management-System bietet:
+### Task Management (New!)
+The new task management system offers:
 
-- **Bidirektionale Synchronisation**: Lokale ↔ Remote Task-Sync
-- **Orphaned Task Cleanup**: Automatische Bereinigung nicht mehr benötigter Tasks
-- **Usage-Check**: Sicherheitsprüfung vor Task-Löschung
-- **CLI-Integration**: Vollständige Kommandozeilen-Unterstützung
+- **Bidirectional Synchronization**: Local ↔ Remote task sync
+- **Orphaned Task Cleanup**: Automatic cleanup of no longer needed tasks
+- **Usage Check**: Safety check before task deletion
+- **CLI Integration**: Complete command-line support
 
-**Hauptkommandos:**
+**Main commands:**
 ```bash
-# Status prüfen
+# Check status
 idflow tasks list --sync
 
-# Synchronisieren
+# Synchronize
 idflow tasks upload --all
 idflow tasks purge --orphaned
 ```
 
-### Verbesserte Workflow-Integration
-- **WorkflowManager-Erweiterung**: Zentralisierte Workflow- und Task-Verwaltung
-- **Automatische Synchronisation**: Intelligente Version-Checks
-- **Fehlerbehandlung**: Robuste Error-Recovery-Mechanismen
+### Improved Workflow Integration
+- **WorkflowManager Extension**: Centralized workflow and task management
+- **Automatic Synchronization**: Intelligent version checks
+- **Error Handling**: Robust error recovery mechanisms
 
-## 🎯 Schnellstart nach Kategorie
+## 🎯 Quick Start by Category
 
-### Für Benutzer
-1. [README.md](../README.md) - Projektübersicht
-2. [CLI-Referenz](CLI.md) - Kommandozeilen-Tools
-3. [Workflow-Management](../WORKFLOW_MANAGEMENT.md) - Workflow-Grundlagen
+### For Users
+1. [README.md](../README.md) - Project overview
+2. [CLI Reference](CLI.md) - Command-line tools
+3. [Workflow Management](../WORKFLOW_MANAGEMENT.md) - Workflow basics
 
-### Für Entwickler
-1. [Entwicklung](../README_dev.md) - Setup und Guidelines
-2. [Task-Management](TASK_MANAGEMENT.md) - Task-Entwicklung
-3. [Worker-Framework](../WORKER_FRAMEWORK_DOCUMENTATION.md) - Conductor-Integration
+### For Developers
+1. [Development](../README_dev.md) - Setup and guidelines
+2. [Task Management](TASK_MANAGEMENT.md) - Task development
+3. [Worker Framework](../WORKER_FRAMEWORK_DOCUMENTATION.md) - Conductor integration
 
-### Für System-Administratoren
-1. [Architektur-Übersicht](../ARCHITECTURE_OVERVIEW.md) - System-Design
-2. [ORM-System](../README_ORM.md) - Datenmodell
-3. [Requirements-System](../README_REQUIREMENTS.md) - Validierung
+### For System Administrators
+1. [Architecture Overview](../ARCHITECTURE_OVERVIEW.md) - System design
+2. [ORM System](../README_ORM.md) - Data model
+3. [Requirements System](../README_REQUIREMENTS.md) - Validation
 
 ## 🔍 Navigation
 
-### Nach Funktionalität
-- **Dokumentenmanagement**: [CLI-Referenz](CLI.md) → `doc` Kommandos
-- **Task-Entwicklung**: [Task-Management](TASK_MANAGEMENT.md)
-- **Workflow-Orchestrierung**: [Workflow-Management](../WORKFLOW_MANAGEMENT.md)
-- **Worker-Management**: [Worker-Framework](../WORKER_FRAMEWORK_DOCUMENTATION.md)
+### By Functionality
+- **Document Management**: [CLI Reference](CLI.md) → `doc` commands
+- **Task Development**: [Task Management](TASK_MANAGEMENT.md)
+- **Workflow Orchestration**: [Workflow Management](../WORKFLOW_MANAGEMENT.md)
+- **Worker Management**: [Worker Framework](../WORKER_FRAMEWORK_DOCUMENTATION.md)
 
-### Nach Komplexität
-- **Einfach**: [README.md](../README.md) → [CLI-Referenz](CLI.md)
-- **Mittel**: [Workflow-Management](../WORKFLOW_MANAGEMENT.md) → [Task-Management](TASK_MANAGEMENT.md)
-- **Fortgeschritten**: [Architektur-Übersicht](../ARCHITECTURE_OVERVIEW.md) → [ORM-System](../README_ORM.md)
+### By Complexity
+- **Simple**: [README.md](../README.md) → [CLI Reference](CLI.md)
+- **Intermediate**: [Workflow Management](../WORKFLOW_MANAGEMENT.md) → [Task Management](TASK_MANAGEMENT.md)
+- **Advanced**: [Architecture Overview](../ARCHITECTURE_OVERVIEW.md) → [ORM System](../README_ORM.md)
 
-## 📝 Dokumentations-Standards
+## 📝 Documentation Standards
 
-### Struktur
-- **Übersicht**: Kurze Einführung in das Thema
-- **Grundlagen**: Basis-Konzepte und -Prinzipien
-- **Praktische Beispiele**: Code-Beispiele und Use Cases
-- **Referenz**: Vollständige API/CLI-Dokumentation
-- **Troubleshooting**: Häufige Probleme und Lösungen
+### Structure
+- **Overview**: Brief introduction to the topic
+- **Fundamentals**: Basic concepts and principles
+- **Practical Examples**: Code examples and use cases
+- **Reference**: Complete API/CLI documentation
+- **Troubleshooting**: Common problems and solutions
 
-### Formatierung
-- **Emojis**: Für bessere visuelle Navigation
-- **Code-Blöcke**: Syntax-Highlighting für alle Code-Beispiele
-- **Links**: Querverweise zwischen verwandten Dokumenten
-- **Tabellen**: Für strukturierte Informationen
+### Formatting
+- **Emojis**: For better visual navigation
+- **Code Blocks**: Syntax highlighting for all code examples
+- **Links**: Cross-references between related documents
+- **Tables**: For structured information
 
-## 🤝 Beitragen zur Dokumentation
+## 🤝 Contributing to Documentation
 
-### Verbesserungen vorschlagen
-1. Issue erstellen mit Dokumentations-Problem
-2. Pull Request mit Verbesserungen
-3. Feedback zu bestehender Dokumentation
+### Suggest Improvements
+1. Create issue with documentation problem
+2. Pull request with improvements
+3. Feedback on existing documentation
 
-### Neue Dokumentation
-1. Thema identifizieren
-2. Struktur nach bestehenden Standards
-3. Beispiele und Code-Snippets hinzufügen
-4. Links zu verwandten Dokumenten
+### New Documentation
+1. Identify topic
+2. Structure according to existing standards
+3. Add examples and code snippets
+4. Link to related documents
 
 ---
 
-**Hinweis**: Diese Dokumentationsstruktur wird kontinuierlich verbessert. Feedback und Vorschläge sind willkommen!
+**Note**: This documentation structure is continuously improved. Feedback and suggestions are welcome!

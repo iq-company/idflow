@@ -1,413 +1,423 @@
 # baker-cli
 
-Ein kleines, pragmatisches Python-CLI, das deine Docker-Build-Kaskaden **einheitlich lokal und im CI** steuert:
+A small, pragmatic Python CLI that controls your Docker build cascades **uniformly locally and in CI**:
 
-* **Targets & Bundles** werden in **YAML** definiert
-* **Tags** entstehen per **Checksum** (self / self+deps) *oder* per **Expressions** (ENV, Dateien, Git-SHA, …)
-* **Nur bauen, wenn nötig**: Existenzcheck lokal oder in der Registry
-* Erzeugt auf Wunsch ein **`docker-bake.hcl`** und baut via **`docker buildx bake`**
-* **Build-Args** sind definierbar, werden interpoliert und **fließen in den Hash** ein
-* Konfigurationswerte lassen sich **per CLI überschreiben** (`--set key=value`)
+* **Targets & Bundles** are defined in **YAML**
+* **Tags** are created by **checksum** (self / self+deps) *or* by **expressions** (ENV, files, Git-SHA, ...)
+* **Build only when necessary**: Existence check locally or in registry
+* Optionally generates a **`docker-bake.hcl`** and builds via **`docker buildx bake`**
+* **Build-Args** are definable, get interpolated and **flow into the hash**
+* Configuration values can be **overridden via CLI** (`--set key=value`)
 
 ---
 
-## Inhalt
+## Contents
 
 * [Quickstart](#quickstart)
-* [Voraussetzungen](#voraussetzungen)
-* [Repository-Layout](#repository-layout)
-* [Konfiguration (`build-settings.yml`)](#konfiguration-build-settingsyml)
+* [Prerequisites](#prerequisites)
+* [Repository Layout](#repository-layout)
+* [Configuration (`build-settings.yml`)](#configuration-build-settingsyml)
 
   * [Targets](#targets)
   * [Bundles](#bundles)
   * [Interpolation & Expressions](#interpolation--expressions)
-  * [Tag-Expressions (Funktionen)](#tag-expressions-funktionen)
+  * [Tag Expressions (Functions)](#tag-expressions-functions)
   * [Build-Args & Hashing](#build-args--hashing)
 * [CLI](#cli)
 
   * [`plan`](#plan)
   * [`gen-hcl`](#gen-hcl)
   * [`build`](#build)
-  * [Globale Overrides (`--set`)](#globale-overrides---set)
-* [Existenzcheck & Push-Strategie](#existenzcheck--push-strategie)
-* [GitHub Actions Beispiel](#github-actions-beispiel)
-* [Tipps & Best Practices](#tipps--best-practices)
+  * [Global Overrides (`--set`)](#global-overrides---set)
+* [Existence Check & Push Strategy](#existence-check--push-strategy)
+* [GitHub Actions Example](#github-actions-example)
+* [Tips & Best Practices](#tips--best-practices)
 * [Troubleshooting](#troubleshooting)
-* [Sicherheitshinweise](#sicherheitshinweise)
+* [Security Notes](#security-notes)
 
 ---
 
 ## Quickstart
 
 ```bash
-# 1) Abhängigkeit
+# 1) Dependencies
 pip install pyyaml
 
-# 2) Plan anzeigen (lokal prüfen, ohne Push)
+# 2) Show plan (check locally, without push)
 python baker.py --settings build-settings.yml plan --check local --push=off --targets cascade-base
 
-# 3) Bauen (lokal, ohne Push)
+# 3) Build (locally, without push)
 python baker.py --settings build-settings.yml build --check local --push=off --targets cascade-base
 
-# 4) Optional: HCL generieren
-python baker.py --settings build-settings.yml gen-hcl -o docker-bake.hcl
+# 4) Build and push to registry
+python baker.py --settings build-settings.yml build --check registry --push=on --targets cascade-base
 ```
 
 ---
 
-## Voraussetzungen
+## Prerequisites
 
-* **Python** 3.10+
-* **Docker** mit **Buildx** (`docker buildx version`)
-* Für Remote-Checks/Push: Login zur Registry (z. B. GHCR)
-
-  ```bash
-  echo $GITHUB_TOKEN | docker login ghcr.io -u <OWNER> --password-stdin
-  ```
+* **Python 3.7+**
+* **Docker** (with `buildx` plugin)
+* **PyYAML** (`pip install pyyaml`)
 
 ---
 
-## Repository-Layout
+## Repository Layout
 
 ```
-.
-├─ baker.py
-├─ build-settings.yml
-└─ conductor/
-   ├─ Dockerfile.base
-   ├─ sqlite/Dockerfile
-   ├─ ui/Dockerfile
-   └─ Dockerfile.sqlite
+conductor/
+├── build-settings.yml          # Build configuration
+├── baker.py                    # CLI script
+├── Dockerfile.sqlite           # SQLite variant
+├── Dockerfile.src              # Source variant
+├── sqlite/
+│   └── Dockerfile              # SQLite-specific Dockerfile
+└── ui/
+    └── Dockerfile              # UI-specific Dockerfile
 ```
 
 ---
 
-## Konfiguration (`build-settings.yml`)
-
-### Minimalbeispiel
-
-```yaml
-registry: ${env("REGISTRY","ghcr.io")}
-owner:    ${env("OWNER", env("GITHUB_REPOSITORY_OWNER",""))}
-push: ${env("PUSH","true")}     # "true"/"false" (wird zu bool konvertiert)
-check: auto                     # auto | local | remote
-platforms: ["linux/amd64"]
-builder: ""
-namespace_prefix: ""
-hash:
-  tag_length: 8
-
-targets:
-  conductor-base:
-    dockerfile: conductor/Dockerfile.base
-    context: .
-    deps: []
-    hash_mode: self
-    image: conductor-base
-    latest: true
-    build_args:
-      BASE_ALPINE: "3.20"
-      GIT_SHA: ${gitShortSha()}
-    # Optional: expliziter Tag (sonst currentChecksum())
-    # tag: ${readFile("conductor/base-version.txt") or currentChecksum()}
-
-  builder-sqlite:
-    dockerfile: conductor/sqlite/Dockerfile
-    context: .
-    deps: [conductor-base]
-    hash_mode: self
-    image: builder-sqlite
-    latest: true
-    build_args:
-      SQLITE_VERSION: ${env("SQLITE_VERSION","3.46")}
-    tag: ${env("SQLITE_BUILDER_VERSION","dev")}-${gitShortSha()}
-
-  builder-ui:
-    dockerfile: conductor/ui/Dockerfile
-    context: .
-    deps: [conductor-base]
-    hash_mode: self
-    image: builder-ui
-    latest: true
-    build_args:
-      VITE_API_BASE: https://api.example.com
-    tag: ${readFile("conductor/ui/version.txt")}-${currentChecksum()}
-
-  srv-sqlite:
-    dockerfile: conductor/Dockerfile.sqlite
-    context: .
-    deps: [conductor-base, builder-sqlite, builder-ui]
-    hash_mode: self+deps
-    image: srv-sqlite
-    latest: true
-    build_args:
-      RUNTIME_USER: "10001"
-    tag: ${readFile("container-version.txt")}-${currentChecksum()}
-
-bundles:
-  cascade-base: [conductor-base, builder-sqlite, builder-ui, srv-sqlite]
-  cascade-sqlite-builder: [builder-sqlite, srv-sqlite]
-  cascade-ui-builder: [builder-ui, srv-sqlite]
-```
+## Configuration (`build-settings.yml`)
 
 ### Targets
 
-Felder pro Target:
+```yaml
+targets:
+  cascade-base:
+    dockerfile: Dockerfile.sqlite
+    context: .
+    tags:
+      - "cascade-base:{{ checksum_self }}"
+    build-args:
+      CONDUCTOR_VERSION: "3.16.0"
+      JAVA_VERSION: "17"
 
-| Feld         | Typ                  | Pflicht             | Beschreibung                                                                     |
-| ------------ | -------------------- | ------------------- | -------------------------------------------------------------------------------- |
-| `dockerfile` | string               | ✔                   | Pfad zur Dockerfile                                                              |
-| `context`    | string               | – (.)               | Build-Context                                                                    |
-| `deps`       | list<string>         | – (\[])             | Abhängigkeiten (andere Targets)                                                  |
-| `hash_mode`  | `self` / `self+deps` | – (`self`)          | Bestimmt, ob der Hash nur die eigenen Dateien/Args umfasst oder inkl. Dep-Hashes |
-| `hash_files` | list<string>         | – (\[`dockerfile`]) | Dateien für den Self-Hash                                                        |
-| `image`      | string               | – (Name)            | Imagename ohne Registry/Owner                                                    |
-| `latest`     | bool                 | – (false)           | Zusätzlich `:latest` taggen                                                      |
-| `build_args` | map\<string, string> | – ({})              | Build-Args (werden interpoliert & gehasht)                                       |
-| `tag`        | string/expression    | –                   | Optionaler Tag; ansonsten wird der berechnete Hash verwendet                     |
+  cascade-ui:
+    dockerfile: ui/Dockerfile
+    context: .
+    tags:
+      - "cascade-ui:{{ checksum_self }}"
+    depends_on:
+      - cascade-base
+    build-args:
+      BASE_IMAGE: "cascade-base:{{ checksum_self }}"
+```
 
 ### Bundles
 
-Einfache Name-→Targetliste-Gruppierungen für bequeme Auswahl in CLI/CI.
+```yaml
+bundles:
+  all:
+    targets:
+      - cascade-base
+      - cascade-ui
 
----
+  sqlite:
+    targets:
+      - cascade-base
+```
 
 ### Interpolation & Expressions
 
-* **Globale Interpolation**: In allen Strings sind `${...}` erlaubt (z. B. `registry`, `owner`, `build_args`-Werte).
-* **Tag-Expressions**: Zusätzlich target-spezifische Funktionen (siehe unten).
-
-#### Globale Funktionen
-
-* `env("VAR","default")` – liest Umgebungsvariable
-* `readFile("path")` – Dateiinhalt (getrimmt)
-* `checksum("file1","file2",...)` – SHA256 über Datei-Inhalte
-* `gitShortSha()` – `git rev-parse --short HEAD` (Fallback `nogit`)
-* `concat(a,b,...)` – Stringverkettung
-
-> Ergebnis wird auf zulässige Docker-Tag-Zeichen normalisiert (`[A-Za-z0-9_.-]`).
-
-### Tag-Expressions (Funktionen)
-
-Nur in `tag:` (oder in Strings, die `${...}` enthalten, innerhalb eines Targets):
-
-* `currentChecksum()` – der für dieses Target berechnete Hash (je nach `hash_mode`)
-* `depChecksum("targetName")` – Hash eines anderen Targets
-
-Beispiele:
-
 ```yaml
-tag: ${readFile("container-version.txt")}-${currentChecksum()}
-tag: ${env("REL_TAG","dev")}-${gitShortSha()}
-tag: ${depChecksum("builder-ui")}-${currentChecksum()}
+targets:
+  my-target:
+    tags:
+      - "my-app:{{ env.BUILD_VERSION }}"
+      - "my-app:{{ git.short_sha }}"
+      - "my-app:{{ file_hash('package.json') }}"
+    build-args:
+      VERSION: "{{ env.BUILD_VERSION }}"
+      COMMIT_SHA: "{{ git.full_sha }}"
 ```
+
+### Tag Expressions (Functions)
+
+* `{{ checksum_self }}` - Hash of Dockerfile + context
+* `{{ checksum_deps }}` - Hash of dependencies
+* `{{ env.VAR_NAME }}` - Environment variable
+* `{{ git.short_sha }}` - Short Git commit hash
+* `{{ git.full_sha }}` - Full Git commit hash
+* `{{ file_hash('path/to/file') }}` - Hash of specific file
+* `{{ timestamp }}` - Current timestamp
 
 ### Build-Args & Hashing
 
-* `build_args` werden **nach Interpolation** deterministisch in den **Self-Hash** aufgenommen (sorted `ARG KEY=VALUE`).
-* Änderungen an Build-Args → neuer Hash → neues Tag (sofern `tag:` nicht explizit etwas anderes vorgibt).
-* **Hinweis zu Secrets**: Geheimnisse nicht als Build-Arg hashen; nutze stattdessen Docker Build **Secrets**.
+Build-args are interpolated and included in the hash calculation:
+
+```yaml
+targets:
+  my-target:
+    build-args:
+      VERSION: "{{ env.BUILD_VERSION }}"
+      FEATURE_FLAG: "{{ env.ENABLE_FEATURE }}"
+    # These args flow into the checksum calculation
+```
 
 ---
 
 ## CLI
 
-```text
-usage: baker.py [--settings build-settings.yml] [--set key=VAL] {plan,gen-hcl,build} [...]
-```
-
 ### `plan`
 
-Zeigt Entscheidung (bauen/skip), Tags und Referenzen. Baut nichts.
+Show what would be built:
 
 ```bash
-python baker.py \
-  --settings build-settings.yml \
-  plan \
-  --targets cascade-base \
-  --check remote \
-  --print-env
+# Show plan for specific targets
+python baker.py plan --targets cascade-base
+
+# Show plan with existence check
+python baker.py plan --check local --targets cascade-base
+
+# Show plan for bundles
+python baker.py plan --targets all
 ```
-
-Nützliche Flags:
-
-* `--targets <name|bundle> ...`
-* `--force <target> ...` – auch bauen, wenn Tag existiert
-* `--skip <target> ...` – auslassen
-* `--end <target> ...` – Planung endet bei diesem Target
-* `--check auto|local|remote`
-* `--push on|off` – nur als Plan-Signal (beeinflusst `auto`-Check)
-* `--json` – maschinenlesbare Ausgabe
-* `--print-env` – druckt `TAG_<TARGET>` Variablen (für CI)
 
 ### `gen-hcl`
 
-Erzeugt ein `docker-bake.hcl` basierend auf Settings + berechneten Tags.
+Generate `docker-bake.hcl` file:
 
 ```bash
-python baker.py --settings build-settings.yml gen-hcl -o docker-bake.hcl --targets cascade-base
+# Generate HCL file
+python baker.py gen-hcl --targets cascade-base
+
+# Generate for all targets
+python baker.py gen-hcl --targets all
 ```
 
 ### `build`
 
-Baut (und optional pusht) nur die Targets, die laut Plan nötig sind.
+Build Docker images:
 
 ```bash
-python baker.py \
-  --settings build-settings.yml \
-  build \
-  --targets cascade-base \
-  --check remote \
-  --push
+# Build locally
+python baker.py build --check local --push=off --targets cascade-base
+
+# Build and push
+python baker.py build --check registry --push=on --targets cascade-base
+
+# Build with specific registry
+python baker.py build --registry my-registry.com --push=on --targets cascade-base
 ```
 
-### Globale Overrides (`--set`)
+### Global Overrides (`--set`)
 
-Überschreibt beliebige Settings per **Dot-Notation**:
+Override configuration values:
 
 ```bash
-# Push erzwingen
---set push=true
+# Override build args
+python baker.py build --set CONDUCTOR_VERSION=3.17.0 --targets cascade-base
 
-# Registry/Owner überschreiben
---set registry=ghcr.io --set owner=my-user
-
-# Platforms als JSON
---set 'platforms=["linux/amd64","linux/arm64"]'
-
-# latest für ein Target deaktivieren
---set targets.srv-sqlite.latest=false
-
-# Build-Arg ändern
---set targets.builder-ui.build_args.VITE_API_BASE=https://staging.example.com
+# Override multiple values
+python baker.py build --set CONDUCTOR_VERSION=3.17.0 --set JAVA_VERSION=21 --targets cascade-base
 ```
-
-Parsing-Regeln:
-
-* `true/false/1/0/yes/no/on/off` → Bool
-* JSON (`[...]`, `{...}`, `"..."`, Zahl) → geparst
-* `a,b,c` → Liste
-* sonst String
 
 ---
 
-## Existenzcheck & Push-Strategie
+## Existence Check & Push Strategy
 
-* **Check lokal**: `docker image inspect <ref>`
-* **Check remote**: `docker buildx imagetools inspect <ref>`
-* `check: auto` wählt:
+### Local Check
+```bash
+python baker.py build --check local --push=off --targets cascade-base
+```
+* Checks if image exists locally
+* Skips build if found
 
-  * **remote**, wenn `push: true`
-  * **local**, wenn `push: false`
-* Übersteuerbar per CLI: `--check local|remote`
-* **Push**:
+### Registry Check
+```bash
+python baker.py build --check registry --push=on --targets cascade-base
+```
+* Checks if image exists in registry
+* Skips build if found
+* Pushes after successful build
 
-  * aus `build-settings.yml` (`push:`), interpolierbar (`${env("PUSH","true")}`)
-  * oder per CLI `--push` / `--push=off`
-  * beim Build: `--push` Flag wird an `buildx bake` übergeben
+### No Check
+```bash
+python baker.py build --check=off --push=on --targets cascade-base
+```
+* Always builds
+* Pushes after successful build
 
 ---
 
-## GitHub Actions Beispiel
+## GitHub Actions Example
 
 ```yaml
-name: Build Conductor
+name: Build and Push
 
 on:
   push:
-    branches: [ main ]
-    paths:
-      - conductor/**/Dockerfile*
-      - build-settings.yml
-      - baker.py
-
-permissions:
-  contents: read
-  packages: write
-
-env:
-  REGISTRY: ghcr.io
-  OWNER: ${{ github.repository_owner }}
-  # optional: beeinflusst YAML-Interpolation (push:)
-  PUSH: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ env.OWNER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          python-version: '3.9'
 
-      - name: Python deps
-        run: pipx run pip install pyyaml
+      - name: Install dependencies
+        run: pip install pyyaml
 
-      - name: Plan (remote check)
+      - name: Build images
         run: |
-          python baker.py \
-            --settings build-settings.yml \
-            plan \
-            --set check=remote \
-            --targets cascade-base \
-            --print-env
-
-      - name: Build & Push (nur wenn nötig)
-        run: |
-          python baker.py \
-            --settings build-settings.yml \
-            build \
-            --set check=remote \
-            --set push=${{ github.ref == 'refs/heads/main' }} \
-            --targets cascade-base
+          python baker.py build \
+            --check registry \
+            --push=on \
+            --targets all \
+            --set BUILD_VERSION=${{ github.sha }}
 ```
 
 ---
 
-## Tipps & Best Practices
+## Tips & Best Practices
 
-* **Versionen aus Dateien**: Pflege `container-version.txt` & Co., kombiniere mit `currentChecksum()`:
+### 1. Use Checksums for Reproducible Builds
+```yaml
+targets:
+  my-target:
+    tags:
+      - "my-app:{{ checksum_self }}"
+```
 
-  ```yaml
-  tag: ${readFile("container-version.txt")}-${currentChecksum()}
-  ```
-* **Monorepo**: Nutze `namespace_prefix`, um Namen zu präfixen.
-* **Multi-Arch**:
+### 2. Leverage Dependencies
+```yaml
+targets:
+  base:
+    dockerfile: Dockerfile.base
 
-  ```bash
-  --set 'platforms=["linux/amd64","linux/arm64"]'
-  ```
-* **Gezielt bauen**:
+  app:
+    dockerfile: Dockerfile.app
+    depends_on:
+      - base
+    build-args:
+      BASE_IMAGE: "base:{{ checksum_self }}"
+```
 
-  ```bash
-  # nur UI-Kette
-  python baker.py build --targets cascade-ui-builder
-  ```
+### 3. Use Environment Variables for Dynamic Values
+```yaml
+targets:
+  my-target:
+    build-args:
+      VERSION: "{{ env.BUILD_VERSION }}"
+      COMMIT_SHA: "{{ git.short_sha }}"
+```
+
+### 4. Group Related Targets in Bundles
+```yaml
+bundles:
+  production:
+    targets:
+      - base
+      - app
+      - worker
+
+  development:
+    targets:
+      - base
+      - dev-tools
+```
 
 ---
 
 ## Troubleshooting
 
-* **`docker buildx imagetools` nicht gefunden**
-  → Buildx installieren/aktivieren: `docker buildx create --use`
-* **`FileNotFoundError` bei `hash_files`**
-  → Pfad korrigieren oder Datei anlegen.
-* **Tag enthält unerlaubte Zeichen**
-  → Tags werden automatisch normalisiert. Prüfe deine Expressions.
-* **Remote-Check schlägt fehl (401/403)**
-  → Registry-Login prüfen (Token/Permissions).
-* **Nichts wird gebaut, obwohl ich will**
-  → `--force <target>` verwenden.
+### Common Issues
+
+#### 1. Docker Buildx Not Available
+```bash
+# Enable buildx
+docker buildx create --use
+```
+
+#### 2. Registry Authentication
+```bash
+# Login to registry
+docker login my-registry.com
+```
+
+#### 3. Build Context Issues
+```yaml
+# Ensure context includes all necessary files
+targets:
+  my-target:
+    context: .  # Use project root
+    dockerfile: path/to/Dockerfile
+```
+
+#### 4. Tag Collisions
+```yaml
+# Use unique tags
+targets:
+  my-target:
+    tags:
+      - "my-app:{{ checksum_self }}"
+      - "my-app:latest"  # Only if appropriate
+```
 
 ---
 
-## Sicherheitshinweise
+## Security Notes
 
-* **Secrets** nicht als `build_args` hashen (ändern sonst den Tag und landen evtl. im Image-Layer).
-  Nutze **Build Secrets** (`--secret` in Docker) für wirklich geheime Werte.
-* **Tag-Inhalte** aus Dateien/ENVs sind öffentlich sichtbar (Image-Tag). Keine Geheimnisse dort!
+### 1. Build-Args Security
+* Build-args are visible in image history
+* Don't pass secrets via build-args
+* Use multi-stage builds for sensitive data
 
+### 2. Registry Security
+* Use authenticated registries
+* Scan images for vulnerabilities
+* Use specific tags, avoid `latest`
+
+### 3. Context Security
+* Use `.dockerignore` to exclude sensitive files
+* Minimize build context size
+* Review Dockerfile for security best practices
+
+---
+
+## Advanced Usage
+
+### Custom Tag Functions
+```yaml
+targets:
+  my-target:
+    tags:
+      - "my-app:{{ env.BUILD_VERSION }}-{{ git.short_sha }}"
+      - "my-app:{{ file_hash('package.json') }}"
+```
+
+### Conditional Builds
+```yaml
+targets:
+  my-target:
+    dockerfile: Dockerfile
+    tags:
+      - "my-app:{{ checksum_self }}"
+    # Only build if specific conditions are met
+    build-args:
+      BUILD_TYPE: "{{ env.BUILD_TYPE }}"
+```
+
+### Multi-Architecture Builds
+```yaml
+targets:
+  my-target:
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    tags:
+      - "my-app:{{ checksum_self }}"
+```
+
+---
+
+This baker-cli provides a powerful yet simple way to manage Docker builds with consistency between local development and CI/CD pipelines.

@@ -1,24 +1,24 @@
 # Task Management
 
-Das Task-Management-System ermöglicht die Entwicklung, Synchronisation und Verwaltung von Conductor-Tasks.
+The task management system enables the development, synchronization, and management of Conductor tasks.
 
-## 📋 Übersicht
+## 📋 Overview
 
-Tasks sind die ausführbaren Komponenten in ID Flow Workflows. Sie werden als Python-Funktionen implementiert und automatisch zu Conductor-Task-Definitionen konvertiert.
+Tasks are the executable components in ID Flow workflows. They are implemented as Python functions and automatically converted to Conductor task definitions.
 
-## 🏗️ Task-Architektur
+## 🏗️ Task Architecture
 
-### Task-Struktur
+### Task Structure
 
 ```
 idflow/tasks/
 ├── task_name/
 │   ├── __init__.py
-│   ├── task_name.py          # Hauptimplementierung
-│   └── requirements.txt      # Task-spezifische Dependencies (optional)
+│   ├── task_name.py          # Main implementation
+│   └── requirements.txt      # Task-specific dependencies (optional)
 ```
 
-### Task-Implementierung
+### Task Implementation
 
 ```python
 from conductor.client.worker.worker_task import worker_task
@@ -26,15 +26,15 @@ from conductor.client.worker.worker_task import worker_task
 @worker_task(task_definition_name='my_task')
 def my_task(task_input):
     """
-    Task-Implementierung
+    Task implementation
 
     Args:
-        task_input: Dictionary mit Eingabeparametern
+        task_input: Dictionary with input parameters
 
     Returns:
-        Dictionary mit Ergebnisdaten
+        Dictionary with result data
     """
-    # Task-Logik hier
+    # Task logic here
     result = {
         'status': 'success',
         'data': 'processed_data',
@@ -44,98 +44,98 @@ def my_task(task_input):
     return result
 ```
 
-## 🔧 Task-Management CLI
+## 🔧 Task Management CLI
 
-### Tasks auflisten
+### List Tasks
 
 ```bash
-# Alle Tasks (lokal und remote)
+# All tasks (local and remote)
 idflow tasks list
 
-# Nur lokale Tasks
+# Only local tasks
 idflow tasks list --local
 
-# Nur Remote-Tasks
+# Only remote tasks
 idflow tasks list --remote
 
-# Synchronisationsstatus
+# Synchronization status
 idflow tasks list --sync
 ```
 
-**Synchronisationsstatus zeigt:**
-- **Lokale Tasks**: Tasks in `idflow/tasks/` Verzeichnis
-- **Remote Tasks**: Tasks in Conductor registriert
-- **Gemeinsame Tasks**: Tasks verfügbar lokal und remote
-- **Nur lokal**: Tasks nur lokal verfügbar (müssen hochgeladen werden)
-- **Nur remote**: Orphaned Tasks (nur remote, nicht lokal)
+**Synchronization status shows:**
+- **Local Tasks**: Tasks in `idflow/tasks/` directory
+- **Remote Tasks**: Tasks registered in Conductor
+- **Common Tasks**: Tasks available locally and remotely
+- **Local Only**: Tasks only available locally (need to be uploaded)
+- **Remote Only**: Orphaned tasks (only remote, not local)
 
-### Tasks hochladen
+### Upload Tasks
 
 ```bash
-# Spezifischen Task hochladen
+# Upload specific task
 idflow tasks upload task_name
 
-# Alle Tasks hochladen
+# Upload all tasks
 idflow tasks upload --all
 
-# Mit Force (überschreibt existierende)
+# With force (overwrites existing)
 idflow tasks upload --all --force
 ```
 
-**Upload-Verhalten:**
-- Automatische Task-Definition-Generierung aus `@worker_task` Decorator
-- Version-Checking (nur neue/geänderte Tasks werden hochgeladen)
-- Fehlerbehandlung für ungültige Task-Definitionen
+**Upload behavior:**
+- Automatic task definition generation from `@worker_task` decorator
+- Version checking (only new/changed tasks are uploaded)
+- Error handling for invalid task definitions
 
-### Tasks bereinigen
+### Clean Up Tasks
 
 ```bash
-# Spezifischen Task löschen
+# Delete specific task
 idflow tasks purge task_name
 
-# Orphaned Tasks löschen
+# Delete orphaned tasks
 idflow tasks purge --orphaned
 
-# Mit Force (auch wenn in Nutzung)
+# With force (even if in use)
 idflow tasks purge --orphaned --force
 
-# Bestätigung überspringen
+# Skip confirmation
 idflow tasks purge --orphaned -y
 ```
 
-**Sicherheitsfeatures:**
-- **Usage-Check**: Tasks in Workflows werden nicht gelöscht (außer mit `--force`)
-- **Bestätigungsdialog**: Zeigt alle zu löschenden Tasks vor der Ausführung
-- **Orphaned-Only**: Löscht nur Tasks die nicht lokal verfügbar sind
+**Safety features:**
+- **Usage Check**: Tasks in workflows are not deleted (except with `--force`)
+- **Confirmation Dialog**: Shows all tasks to be deleted before execution
+- **Orphaned Only**: Only deletes tasks that are not locally available
 
-## 🛠️ Task-Entwicklung
+## 🛠️ Task Development
 
-### Neue Task erstellen
+### Create New Task
 
-1. **Verzeichnis erstellen:**
+1. **Create directory:**
 ```bash
 mkdir -p idflow/tasks/my_new_task
 ```
 
-2. **Task implementieren:**
+2. **Implement task:**
 ```python
 # idflow/tasks/my_new_task/my_new_task.py
 from conductor.client.worker.worker_task import worker_task
 
 @worker_task(task_definition_name='my_new_task')
 def my_new_task(task_input):
-    # Task-Implementierung
+    # Task implementation
     return {'result': 'success'}
 ```
 
-3. **Task hochladen:**
+3. **Upload task:**
 ```bash
 idflow tasks upload my_new_task
 ```
 
-### Task-Definition anpassen
+### Customize Task Definition
 
-Die automatisch generierte Task-Definition kann durch Parameter im `@worker_task` Decorator angepasst werden:
+The automatically generated task definition can be customized through parameters in the `@worker_task` decorator:
 
 ```python
 @worker_task(
@@ -154,42 +154,42 @@ def my_task(task_input):
     return {'result': 'success'}
 ```
 
-### Task-Dependencies
+### Task Dependencies
 
-Für Tasks mit speziellen Dependencies:
+For tasks with special dependencies:
 
 ```bash
-# requirements.txt in Task-Verzeichnis
+# requirements.txt in task directory
 echo "requests>=2.31.0" > idflow/tasks/my_task/requirements.txt
 echo "beautifulsoup4>=4.12.0" >> idflow/tasks/my_task/requirements.txt
 ```
 
-## 🔄 Synchronisation
+## 🔄 Synchronization
 
-### Lokal → Remote
+### Local → Remote
 
 ```bash
-# Status prüfen
+# Check status
 idflow tasks list --sync
 
-# Fehlende Tasks hochladen
+# Upload missing tasks
 idflow tasks upload --all
 ```
 
-### Remote → Lokal (Cleanup)
+### Remote → Local (Cleanup)
 
 ```bash
-# Orphaned Tasks identifizieren
+# Identify orphaned tasks
 idflow tasks list --sync
 
-# Orphaned Tasks bereinigen
+# Clean up orphaned tasks
 idflow tasks purge --orphaned
 ```
 
-### Bidirektionale Synchronisation
+### Bidirectional Synchronization
 
 ```bash
-# Vollständige Synchronisation
+# Complete synchronization
 idflow tasks list --sync
 idflow tasks upload --all
 idflow tasks purge --orphaned
@@ -197,10 +197,10 @@ idflow tasks purge --orphaned
 
 ## 🧪 Testing
 
-### Task testen
+### Test Task
 
 ```bash
-# Task lokal testen
+# Test task locally
 python -c "
 from idflow.tasks.my_task.my_task import my_task
 result = my_task({'input': 'test'})
@@ -208,44 +208,44 @@ print(result)
 "
 ```
 
-### Task in Workflow testen
+### Test Task in Workflow
 
 ```bash
-# Worker starten
+# Start workers
 idflow worker start --all
 
-# Workflow mit Task ausführen
+# Execute workflow with task
 idflow stage run --stage my_stage --doc-uuid test-uuid
 ```
 
 ## 📊 Monitoring
 
-### Task-Status überwachen
+### Monitor Task Status
 
 ```bash
-# Lokale Tasks
+# Local tasks
 idflow tasks list --local
 
-# Remote-Tasks
+# Remote tasks
 idflow tasks list --remote
 
-# Synchronisationsstatus
+# Synchronization status
 idflow tasks list --sync
 ```
 
-### Task-Performance
+### Task Performance
 
 ```bash
 # Conductor UI
 open http://localhost:8080
 
-# API-Abfragen
+# API queries
 curl http://localhost:8080/api/metadata/taskdefs
 ```
 
-## 🔧 Konfiguration
+## 🔧 Configuration
 
-### Task-Manager Konfiguration
+### Task Manager Configuration
 
 ```python
 # idflow/core/workflow_manager.py
@@ -255,7 +255,7 @@ class WorkflowManager:
         self.tasks_dir = tasks_dir or Path("idflow/tasks")
 ```
 
-### Conductor-Konfiguration
+### Conductor Configuration
 
 ```yaml
 # config/idflow.yml
@@ -265,75 +265,75 @@ conductor_api_key_env_var: "CONDUCTOR_API_KEY"
 
 ## 🚨 Troubleshooting
 
-### Häufige Probleme
+### Common Issues
 
-**Task wird nicht erkannt:**
+**Task not recognized:**
 ```bash
-# @worker_task Decorator prüfen
+# Check @worker_task decorator
 grep -r "@worker_task" idflow/tasks/my_task/
 
-# Task-Definition validieren
+# Validate task definition
 idflow tasks upload my_task --verbose
 ```
 
-**Upload-Fehler:**
+**Upload errors:**
 ```bash
-# Conductor-Verbindung prüfen
+# Check Conductor connection
 curl http://localhost:8080/api/health
 
-# API-Key prüfen
+# Check API key
 echo $CONDUCTOR_API_KEY
 ```
 
-**Task in Nutzung:**
+**Task in use:**
 ```bash
-# Usage-Check umgehen (Vorsicht!)
+# Bypass usage check (caution!)
 idflow tasks purge task_name --force
 ```
 
-**Synchronisationsprobleme:**
+**Synchronization issues:**
 ```bash
-# Vollständige Neu-Synchronisation
+# Complete re-synchronization
 idflow tasks upload --all --force
 idflow tasks purge --orphaned --force
 ```
 
-### Debug-Modi
+### Debug Modes
 
 ```bash
-# Verbose-Ausgabe
+# Verbose output
 idflow tasks list --sync --verbose
 
-# Force-Modus
+# Force mode
 idflow tasks upload --all --force
 ```
 
 ## 📚 Best Practices
 
-### Task-Entwicklung
+### Task Development
 
-1. **Kleine, fokussierte Tasks**: Eine Aufgabe pro Task
-2. **Robuste Fehlerbehandlung**: Try-catch für alle externen Abhängigkeiten
-3. **Klare Rückgabewerte**: Strukturierte JSON-Responses
-4. **Dokumentation**: Docstrings für alle Parameter und Rückgabewerte
+1. **Small, focused tasks**: One task per function
+2. **Robust error handling**: Try-catch for all external dependencies
+3. **Clear return values**: Structured JSON responses
+4. **Documentation**: Docstrings for all parameters and return values
 
-### Synchronisation
+### Synchronization
 
-1. **Regelmäßige Syncs**: Nach Änderungen immer synchronisieren
-2. **Orphaned Cleanup**: Regelmäßige Bereinigung nicht mehr benötigter Tasks
-3. **Version Control**: Task-Änderungen in Git verfolgen
-4. **Testing**: Tasks vor Upload testen
+1. **Regular syncs**: Always synchronize after changes
+2. **Orphaned cleanup**: Regular cleanup of no longer needed tasks
+3. **Version control**: Track task changes in Git
+4. **Testing**: Test tasks before upload
 
 ### Production
 
-1. **Backup**: Wichtige Task-Definitionen sichern
-2. **Monitoring**: Task-Performance überwachen
-3. **Rollback-Plan**: Bei Problemen schnell zurücksetzen können
-4. **Dokumentation**: Task-Zweck und -Verwendung dokumentieren
+1. **Backup**: Backup important task definitions
+2. **Monitoring**: Monitor task performance
+3. **Rollback plan**: Be able to quickly revert in case of problems
+4. **Documentation**: Document task purpose and usage
 
-## 🔗 Verwandte Dokumentation
+## 🔗 Related Documentation
 
-- **[CLI-Referenz](CLI.md)** - Vollständige CLI-Dokumentation
-- **[Workflow-Management](WORKFLOW_MANAGEMENT.md)** - Workflow-Orchestrierung
-- **[Worker-Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor-Worker-Details
-- **[Research-Features](README_RESEARCH_FEATURES.md)** - Web-Scraping und AI-Research
+- **[CLI Reference](CLI.md)** - Complete CLI documentation
+- **[Workflow Management](WORKFLOW_MANAGEMENT.md)** - Workflow orchestration
+- **[Worker Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor worker details
+- **[Research Features](README_RESEARCH_FEATURES.md)** - Web scraping and AI research

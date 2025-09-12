@@ -1,65 +1,119 @@
 # CLI Reference
 
-Die ID Flow CLI bietet umfassende Kommandozeilen-Tools für alle Aspekte des Dokumentenmanagements.
+The ID Flow CLI provides comprehensive command-line tools for Dealing with Document Pipelines
 
-## 📋 Übersicht
+## 📋 Overview
 
 ```bash
 idflow --help
 ```
 
-### Hauptkategorien
+### Main Categories
 
-- **`doc`** - Dokumentenmanagement (erstellen, auflisten, bearbeiten)
-- **`stage`** - Stage-Management (evaluieren, ausführen)
-- **`workflow`** - Workflow-Management (auflisten, hochladen)
-- **`tasks`** - Task-Management (auflisten, hochladen, bereinigen)
-- **`worker`** - Worker-Management (starten, stoppen, verwalten)
-- **`vendor`** - Erweiterungen kopieren und anpassen
+- **`init`** - Project initialization (create project, setup venv)
+- **`doc`** - Document management (create, list, edit)
+- **`stage`** - Stage management (evaluate, execute)
+- **`workflow`** - Workflow management (list, upload)
+- **`tasks`** - Task management (list, upload, cleanup)
+- **`worker`** - Worker management (start, stop, manage)
+- **`vendor`** - Copy and customize extensions
 
 ---
 
-## 📄 Dokumentenmanagement (`doc`)
+## 🚀 Project Initialization (`init`)
 
-### Dokumente erstellen
+### Create New Project
 
 ```bash
-# Einfaches Dokument
+# Create new project with virtual environment
+idflow init myproject
+
+# Create project with features
+idflow init myproject --add-feature research --add-feature writer
+```
+
+### Initialize Current Directory
+
+```bash
+# Initialize current directory (if empty or only contains .venv)
+idflow init
+
+# Initialize with features
+idflow init --add-feature research --add-feature writer
+```
+
+### Project Structure
+
+The `init` command creates:
+
+```
+myproject/
+├── .venv/                    # Virtual environment
+├── data/                     # Document storage
+│   ├── inbox/               # New documents
+│   ├── active/              # Active documents
+│   └── done/                # Completed documents
+├── config/
+│   └── idflow.yml           # Configuration file
+├── .gitignore               # Git ignore file
+└── README.md                # Project documentation (optional)
+```
+
+### Configuration
+
+The generated `config/idflow.yml`:
+
+```yaml
+# ID Flow Configuration
+base_dir: "data"
+config_dir: "config"
+document_implementation: "fs_markdown"
+conductor_server_url: "http://localhost:8080"
+```
+
+---
+
+## 📄 Document Management (`doc`)
+
+### Create Documents
+
+```bash
+# Simple document
 echo "Text Summary" | idflow doc add
 
-# Mit Eigenschaften
+# With properties
 idflow doc add \
-  --set title="Observability für LLM-Content-Flows" \
+  --set title="Observability for LLM-Content-Flows" \
   --set priority=0.72 \
   --list-add tags=observability \
   --list-add tags=llm
 
-# Mit Dateien
+# With files
 idflow doc add \
   --add-file file_type_ident=./upload.pdf \
   --file-data '{"note":"original upload"}'
 ```
 
-### Dokumente auflisten
+### List Documents
 
 ```bash
-# Nur UUIDs (Standard)
+# Only UUIDs (default)
 idflow doc list
 
-# Mit Filtern und Spalten
+# With filters and columns
 idflow doc list \
   --filter 'title=observ*' \
   --filter 'priority=>0.5' \
   --col id --col title --col priority --col doc-keys
 ```
 
-### Dokumente bearbeiten
+### Edit Documents
 
 ```bash
-# Status ändern
+# Change status
 idflow doc set-status uuid active
 
-# Eigenschaften aktualisieren
+# Update properties
 echo "new body" | idflow doc modify uuid \
   --set priority=0.8 \
   --list-add tags=observability \
@@ -67,229 +121,266 @@ echo "new body" | idflow doc modify uuid \
   --add-file attachment=./upload.pdf
 ```
 
-### Dokumente löschen
+### Delete Documents
 
 ```bash
-# Einzelnes Dokument
+# Single document
 idflow doc drop uuid
 
-# Alle Dokumente
+# All documents
 idflow doc drop-all --force
 ```
 
 ---
 
-## 🔄 Stage-Management (`stage`)
+## 🔄 Stage Management (`stage`)
 
-### Stage evaluieren
+### Evaluate Stages
 
 ```bash
-# Alle Stages evaluieren
+# Evaluate all stages
 idflow stage evaluate
 
-# Spezifische Stage evaluieren
+# Evaluate specific stage
 idflow stage evaluate --stage research_blog_post_ideas
 ```
 
-### Stage ausführen
+### Execute Stages
 
 ```bash
-# Stage manuell starten
+# Manually start stage
 idflow stage run --stage research_blog_post_ideas --doc-uuid uuid
 ```
 
 ---
 
-## 🔧 Workflow-Management (`workflow`)
+## 🔧 Workflow Management (`workflow`)
 
-### Workflows auflisten
+### List Workflows
 
 ```bash
-# Lokale und Remote-Workflows
+# Only local workflows (default)
 idflow workflow list
 
-# Nur lokale Workflows
+# Explicitly only local workflows
 idflow workflow list --local
 
-# Nur Remote-Workflows
-idflow workflow list --conductor
-
-# Beide explizit
+# Local and remote workflows
 idflow workflow list --all
+
+# Only remote workflows (only in Conductor)
+idflow workflow list --remote
+
+# Without version information
+idflow workflow list --no-versions
 ```
 
-### Workflows hochladen
+### Upload Workflows
 
 ```bash
-# Alle Workflows hochladen
+# Upload all workflows
 idflow workflow upload
 
-# Mit Force (ignoriert Version-Checks)
+# With force (ignores version checks)
 idflow workflow upload --force
 
-# Spezifischen Workflow hochladen
+# Upload specific workflow
 idflow workflow upload --workflow workflow_name
 ```
 
----
-
-## ⚙️ Task-Management (`tasks`) - **NEU!**
-
-### Tasks auflisten
+### Prune Unknown/Outdated Workflows
 
 ```bash
-# Lokale und Remote-Tasks
+# Clean up remote workflows (only those that no longer exist locally)
+idflow workflow prune
+
+# Clean up specific workflow
+idflow workflow prune --workflow workflow_name
+
+# Clean up specific version
+idflow workflow prune --workflow workflow_name --version 2
+
+# Dry-run (show only, don't delete)
+idflow workflow prune --dry-run
+
+# With force (even with active workflow runs)
+idflow workflow prune --force
+```
+
+**Safety Checks:**
+- Only deletes workflows that no longer exist locally
+- Checks for running/pending workflow runs before deletion
+- Prevents deletion of active runs (except with `--force`)
+- Shows details of active runs
+- Confirmation dialog before deletion
+
+---
+
+## ⚙️ Task Management (`tasks`) - **NEW!**
+
+### List Tasks
+
+```bash
+# Local and remote tasks
 idflow tasks list
 
-# Nur lokale Tasks
+# Only local tasks
 idflow tasks list --local
 
-# Nur Remote-Tasks
+# Only remote tasks
 idflow tasks list --remote
 
-# Synchronisationsstatus
+# Synchronization status
 idflow tasks list --sync
 ```
 
-**Synchronisationsstatus zeigt:**
-- Anzahl lokaler vs. Remote-Tasks
-- Tasks nur lokal verfügbar
-- Tasks nur remote verfügbar
-- Gemeinsame Tasks
+**Synchronization status shows:**
+- Number of local vs. remote tasks
+- Tasks only available locally
+- Tasks only available remotely
+- Common tasks
 
-### Tasks hochladen
+### Upload Tasks
 
 ```bash
-# Spezifischen Task hochladen
+# Upload specific task
 idflow tasks upload task_name
 
-# Alle Tasks hochladen
+# Upload all tasks
 idflow tasks upload --all
 
-# Mit Force (überschreibt existierende)
+# With force (overwrites existing)
 idflow tasks upload --all --force
 ```
 
-### Tasks bereinigen
+### Clean Up Tasks
 
 ```bash
-# Spezifischen Task löschen
+# Delete specific task
 idflow tasks purge task_name
 
-# Orphaned Tasks löschen (nur remote, nicht lokal)
+# Delete orphaned tasks (only remote, not local)
 idflow tasks purge --orphaned
 
-# Mit Force (auch wenn in Nutzung)
+# With force (even if in use)
 idflow tasks purge --orphaned --force
 
-# Bestätigung überspringen
+# Skip confirmation
 idflow tasks purge --orphaned -y
 ```
 
 **Orphaned Tasks:**
-- Tasks die nur in Conductor existieren, aber nicht lokal
-- Sicherheitscheck: Tasks in Nutzung werden nicht gelöscht (außer mit `--force`)
-- Bestätigungsdialog zeigt alle zu löschenden Tasks
+- Tasks that only exist in Conductor, but not locally
+- Safety check: Tasks in use are not deleted (except with `--force`)
+- Confirmation dialog shows all tasks to be deleted
 
 ---
 
-## 👷 Worker-Management (`worker`)
+## 👷 Worker Management (`worker`)
 
-### Worker auflisten
+### List Workers
 
 ```bash
-# Verfügbare Worker anzeigen
+# Show available workers
 idflow worker list
 ```
 
-### Worker starten
+### Start Workers
 
 ```bash
-# Alle Worker starten
+# Start all workers
 idflow worker start --all
 
-# Spezifische Worker starten
+# Start specific workers
 idflow worker start --worker gpt_researcher --worker duckduckgo_serp
 ```
 
-### Worker stoppen
+### Stop Workers
 
 ```bash
-# Alle Worker stoppen
+# Stop all workers
 idflow worker killall
 
-# Spezifischen Worker stoppen
+# Stop specific worker
 idflow worker killall update_stage_status
 
-# Mit Force (SIGKILL)
+# With force (SIGKILL)
 idflow worker killall --force
 
-# Bestätigung überspringen
+# Skip confirmation
 idflow worker killall -y
 ```
 
 ---
 
-## 🔧 Erweiterungen (`vendor`)
+## 🔧 Extensions (`vendor`)
 
-### Erweiterungen kopieren
+### Copy Extensions
 
 ```bash
-# Alle Erweiterungen kopieren
+# Copy all extensions
 idflow vendor copy --all
 
-# Interaktiv auswählen
+# Interactive selection
 idflow vendor copy
 ```
 
 ---
 
-## 🎯 Praktische Beispiele
+## 🎯 Practical Examples
 
-### Content-Pipeline
+### Content Pipeline
 
 ```bash
-# 1. Dokument erstellen
+# 1. Create document
 echo "AI Trends 2024" | idflow doc add --set title="AI Trends 2024" --list-add tags=research
 
-# 2. Tasks synchronisieren
+# 2. Synchronize tasks
 idflow tasks list --sync
 idflow tasks upload --all
 
-# 3. Workflows hochladen
+# 3. Upload workflows
 idflow workflow upload
 
-# 4. Worker starten
+# 4. Start workers
 idflow worker start --all
 
-# 5. Stage evaluieren
+# 5. Evaluate stages
 idflow stage evaluate
 ```
 
-### Cleanup-Workflow
+### Cleanup Workflow
 
 ```bash
-# 1. Orphaned Tasks identifizieren
+# 1. Check workflows
+idflow workflow list --remote
+
+# 2. Identify orphaned tasks
 idflow tasks list --sync
 
-# 2. Orphaned Tasks bereinigen
+# 3. Clean up orphaned tasks
 idflow tasks purge --orphaned
 
-# 3. Status überprüfen
+# 4. Clean up orphaned workflows
+idflow workflow prune --dry-run
+idflow workflow prune
+
+# 5. Check status
+idflow workflow list --remote
 idflow tasks list --sync
 ```
 
-### Development-Workflow
+### Development Workflow
 
 ```bash
-# 1. Erweiterungen kopieren
+# 1. Copy extensions
 idflow vendor copy --all
 
-# 2. Lokale Änderungen testen
+# 2. Test local changes
 idflow tasks upload --all --force
 idflow workflow upload --force
 
-# 3. Worker testen
+# 3. Test workers
 idflow worker start --all
 ```
 
@@ -297,53 +388,74 @@ idflow worker start --all
 
 ## 🔍 Troubleshooting
 
-### Häufige Probleme
+### Common Issues
 
-**Tasks nicht gefunden:**
+**Tasks not found:**
 ```bash
-# Tasks synchronisieren
+# Synchronize tasks
 idflow tasks upload --all
 ```
 
-**Workflows nicht gefunden:**
+**Workflows not found:**
 ```bash
-# Workflows hochladen
+# Upload workflows
 idflow workflow upload
 ```
 
-**Worker startet nicht:**
+**Worker won't start:**
 ```bash
-# Conductor-Status prüfen
+# Check Conductor status
 curl http://localhost:8080/api/health
 
-# Worker-Status prüfen
+# Check worker status
 idflow worker list
 ```
 
 **Orphaned Tasks:**
 ```bash
-# Status prüfen
+# Check status
 idflow tasks list --sync
 
-# Bereinigen
+# Clean up
 idflow tasks purge --orphaned
 ```
 
-### Debug-Informationen
+**Orphaned Workflows:**
+```bash
+# Check status
+idflow workflow list --remote
+
+# Check dry-run
+idflow workflow prune --dry-run
+
+# Clean up
+idflow workflow prune
+```
+
+**Active Workflow Runs:**
+```bash
+# Check workflows with active runs
+idflow workflow prune --dry-run
+
+# Delete with force (caution!)
+idflow workflow prune --force
+```
+
+### Debug Information
 
 ```bash
-# Detaillierte Ausgabe
+# Detailed output
 idflow tasks list --sync --verbose
 
-# Force-Modus für Problembehebung
+# Force mode for troubleshooting
 idflow tasks upload --all --force
 idflow workflow upload --force
 ```
 
 ---
 
-## 📚 Weitere Informationen
+## 📚 Further Information
 
-- **[Workflow-Management](WORKFLOW_MANAGEMENT.md)** - Detaillierte Workflow-Dokumentation
-- **[Task-Management](TASK_MANAGEMENT.md)** - Task-Entwicklung und -Management
-- **[Worker-Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor-Worker-Details
+- **[Workflow Management](WORKFLOW_MANAGEMENT.md)** - Detailed workflow documentation
+- **[Task Management](TASK_MANAGEMENT.md)** - Task development and management
+- **[Worker Framework](WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor worker details

@@ -1,117 +1,117 @@
-# Finale Dokumentationsstruktur
+# Final Documentation Structure
 
-## 📁 Verzeichnisstruktur
+## 📁 Directory Structure
 
-### Hauptverzeichnis (Root)
+### Main Directory (Root)
 ```
 idflow/
-├── README.md           # Projektübersicht und Quick Start
-├── CHANGELOG.md        # Versionshistorie (Standard-Position)
-├── LICENSE             # Lizenz (Standard-Position)
-├── pyproject.toml      # Python-Projektkonfiguration
-└── docs/               # Alle Dokumentationen
+├── README.md           # Project overview and quick start
+├── CHANGELOG.md        # Version history (standard position)
+├── LICENSE             # License (standard position)
+├── pyproject.toml      # Python project configuration
+└── docs/               # All documentation
 ```
 
-### docs/ Verzeichnis
+### docs/ Directory
 ```
 docs/
-├── README.md                           # Dokumentations-Übersicht
-├── CLI.md                             # CLI-Referenz
-├── TASK_MANAGEMENT.md                 # Task-Management (NEU!)
-├── ARCHITECTURE_OVERVIEW.md           # Systemarchitektur
-├── README_ORM.md                      # ORM-System
-├── README_REQUIREMENTS.md             # Requirements-System
-├── WORKER_FRAMEWORK_DOCUMENTATION.md  # Worker-Framework
-├── WORKFLOW_MANAGEMENT.md             # Workflow-Management
-├── README_RESEARCH_FEATURES.md        # Research-Features
-├── README_dev.md                      # Entwicklung
-├── PUBLISHING.md                      # Release-Prozess
-├── VERSION_MANAGEMENT.md              # Versionsverwaltung
-├── CHANGED_FILES_REVIEW.md            # Änderungsübersicht
-└── FINAL_STRUCTURE.md                 # Diese Datei
+├── README.md                           # Documentation overview
+├── CLI.md                             # CLI reference
+├── TASK_MANAGEMENT.md                 # Task management (NEW!)
+├── ARCHITECTURE_OVERVIEW.md           # System architecture
+├── README_ORM.md                      # ORM system
+├── README_REQUIREMENTS.md             # Requirements system
+├── WORKER_FRAMEWORK_DOCUMENTATION.md  # Worker framework
+├── WORKFLOW_MANAGEMENT.md             # Workflow management
+├── README_RESEARCH_FEATURES.md        # Research features
+├── README_dev.md                      # Development
+├── PUBLISHING.md                      # Release process
+├── VERSION_MANAGEMENT.md              # Version management
+├── CHANGED_FILES_REVIEW.md            # Change overview
+└── FINAL_STRUCTURE.md                 # This file
 ```
 
 ## 🎯 Background of the Structure
 
-### Im Hauptverzeichnis belassen
-- **README.md**: Standard-Position für Projektübersicht
-- **CHANGELOG.md**: Standard-Position, von Tools erwartet (GitHub, Package Manager)
-- **LICENSE**: Standard-Position, rechtlich erforderlich
+### Kept in Main Directory
+- **README.md**: Standard position for project overview
+- **CHANGELOG.md**: Standard position, expected by tools (GitHub, Package Manager)
+- **LICENSE**: Standard position, legally required
 
-### In docs/ verschoben
-- **Technische Dokumentation**: Alle README_*.md Dateien
-- **Spezialisierte Guides**: CLI, Task-Management, etc.
-- **Projekt-Management**: Publishing, Version Management, etc.
+### Moved to docs/
+- **Technical Documentation**: All README_*.md files
+- **Specialized Guides**: CLI, Task Management, etc.
+- **Project Management**: Publishing, Version Management, etc.
 
-## 📚 Kategorisierung
+## 📚 Categorization
 
-### 1. Grundlagen
-- Architektur-Übersicht
-- ORM-System
-- Requirements-System
+### 1. Fundamentals
+- Architecture Overview
+- ORM System
+- Requirements System
 
 ### 2. CLI & Management
-- CLI-Referenz
-- Task-Management (NEU!)
-- Workflow-Management
+- CLI Reference
+- Task Management (NEW!)
+- Workflow Management
 
-### 3. Kern-Systeme
-- Worker-Framework
-- ORM-System
-- Requirements-System
+### 3. Core Systems
+- Worker Framework
+- ORM System
+- Requirements System
 
-### 4. Features & Erweiterungen
-- Research-Features
-- Entwicklung
+### 4. Features & Extensions
+- Research Features
+- Development
 
-### 5. Projekt-Management
-- Changelog (im Root)
+### 5. Project Management
+- Changelog (in root)
 - Publishing
 - Version Management
 - Changed Files Review
 
-## ✅ Vorteile
+## ✅ Advantages
 
-1. **Standard-Konformität**: CHANGELOG.md und LICENSE im Root
-2. **Saubere Organisation**: Technische Dokumentation in docs/
-3. **Einfache Navigation**: Strukturierte Kategorisierung
-4. **Wartbarkeit**: Zentrale Verwaltung der Dokumentation
-5. **Erweiterbarkeit**: Einfache Hinzufügung neuer Dokumente
+1. **Standard Compliance**: CHANGELOG.md and LICENSE in root
+2. **Clean Organization**: Technical documentation in docs/
+3. **Easy Navigation**: Structured categorization
+4. **Maintainability**: Central documentation management
+5. **Extensibility**: Easy addition of new documents
 
 ## 🔗 Navigation
 
-### Von der Haupt-README
-Alle Links führen zu `docs/` Verzeichnis:
+### From Main README
+All links lead to `docs/` directory:
 ```markdown
-- **[Architektur-Übersicht](docs/ARCHITECTURE_OVERVIEW.md)**
+- **[Architecture Overview](docs/ARCHITECTURE_OVERVIEW.md)**
 ```
 
-### Innerhalb von docs/
-Relative Links zwischen Dokumenten:
+### Within docs/
+Relative links between documents:
 ```markdown
-- **[CLI-Referenz](CLI.md)**
+- **[CLI Reference](CLI.md)**
 - **[Changelog](../CHANGELOG.md)**
 ```
 
-## 📝 Wartung
+## 📝 Maintenance
 
-### Neue Dokumentationen
-1. Im `docs/` Verzeichnis erstellen
-2. In `docs/README.md` kategorisieren
-3. Bei Bedarf in Haupt-README verlinken
+### New Documentation
+1. Create in `docs/` directory
+2. Categorize in `docs/README.md`
+3. Link in main README if needed
 
-### Bestehende Dokumentationen
-- Alle Referenzen sind aktualisiert
-- Navigation funktioniert korrekt
-- Struktur ist konsistent
+### Existing Documentation
+- All references are updated
+- Navigation works correctly
+- Structure is consistent
 
-## 🚀 Nächste Schritte
+## 🚀 Next Steps
 
-1. **GitHub Pages**: Automatische Dokumentations-Website
-2. **Suchfunktion**: Integration in die Navigation
-3. **Breadcrumbs**: Verbesserte Navigation
-4. **TOC**: Automatische Inhaltsverzeichnisse
+1. **GitHub Pages**: Automatic documentation website
+2. **Search Function**: Integration into navigation
+3. **Breadcrumbs**: Improved navigation
+4. **TOC**: Automatic table of contents
 
 ---
 
-**Status**: ✅ Abgeschlossen und getestet
+**Status**: ✅ Completed and tested

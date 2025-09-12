@@ -4,19 +4,35 @@ from idflow.core.workflow_manager import get_workflow_manager
 
 
 def list_workflows(
-    local: bool = typer.Option(False, "--local", help="Show only local workflow files"),
-    conductor: bool = typer.Option(False, "--conductor", help="Show only workflows in Conductor"),
-    all: bool = typer.Option(False, "--all", help="Show both local and Conductor workflows")
+    local: bool = typer.Option(False, "--local", help="Show only local workflow files (Default)"),
+    all: bool = typer.Option(False, "--all", help="Show both local and remote workflows"),
+    remote: bool = typer.Option(False, "--remote", help="Show only workflows that exist remote but not locally"),
+    versions: bool = typer.Option(True, "--versions/--no-versions", help="Show version information for workflows")
 ):
-    """List workflows (local files and/or Conductor)."""
+    """List workflows (local files and/or remote)."""
     workflow_manager = get_workflow_manager()
 
-    if not (local or conductor or all):
-        # Default: show both
-        local = True
-        conductor = True
+    # Handle remote-only mode
+    if remote:
+        _show_remote_only(workflow_manager, versions)
+        return
 
-    if local or all:
+    # Determine what to show
+    if local:
+        show_local = True
+        show_remote = False
+    elif all:
+        show_local = True
+        show_remote = True
+    elif remote:
+        show_local = False
+        show_remote = True
+    else:
+        # Default: show local only
+        show_local = True
+        show_remote = False
+
+    if show_local:
         typer.echo("Local workflow files:")
         workflows = workflow_manager.discover_workflows()
 
@@ -32,15 +48,15 @@ def list_workflows(
                 else:
                     typer.echo(f"  {workflow_file.name} (invalid)")
 
-        if conductor or all:
+        if show_remote:
             typer.echo()
 
-    if conductor or all:
-        typer.echo("Workflows in Conductor:")
+    if show_remote:
+        typer.echo("Remote workflows:")
         remote_workflows = workflow_manager.list_workflows_remote()
 
         if not remote_workflows:
-            typer.echo("  No workflows found in Conductor")
+            typer.echo("  No remote workflows found ")
         else:
             # Group by name and show versions
             workflow_versions = {}
@@ -53,6 +69,25 @@ def list_workflows(
                     workflow_versions[name].append(version)
 
             for name in sorted(workflow_versions.keys()):
-                versions = sorted(workflow_versions[name])
-                version_str = ', '.join(f'v{v}' for v in versions)
+                versions_list = sorted(workflow_versions[name])
+                version_str = ', '.join(f'v{v}' for v in versions_list)
                 typer.echo(f"  {name} ({version_str})")
+
+
+def _show_remote_only(workflow_manager, show_versions: bool):
+    """Show only workflows that exist remote but not locally."""
+    sync_status = workflow_manager.get_workflow_sync_status()
+    only_remote = sync_status['only_remote']
+    remote_versions = sync_status['remote_versions']
+
+    if only_remote:
+        typer.echo("Remote workflows:")
+        for workflow_name in sorted(only_remote):
+            if show_versions and workflow_name in remote_versions:
+                versions = sorted(remote_versions[workflow_name])
+                version_str = ', '.join(f'v{v}' for v in versions)
+                typer.echo(f"  {workflow_name} ({version_str})")
+            else:
+                typer.echo(f"  {workflow_name}")
+    else:
+        typer.echo("All remote workflows are also available locally.")

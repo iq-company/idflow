@@ -2,15 +2,15 @@
 
 ## Overview
 
-ID Flow verwendet Conductor für Workflow-Orchestrierung. Workflows werden als JSON-Dateien im `idflow/workflows/` Verzeichnis definiert und müssen zu Conductor hochgeladen werden, bevor sie ausgeführt werden können.
+ID Flow uses Conductor for workflow orchestration. Workflows are defined as JSON files in the `idflow/workflows/` directory and must be uploaded before they can be executed.
 
-## 🆕 Neue Features
+## 🆕 New Features
 
-### Task-Management Integration
-- **Task-Synchronisation**: Automatische Synchronisation zwischen lokalen und Remote-Tasks
-- **Orphaned Task Cleanup**: Bereinigung von nicht mehr benötigten Remote-Tasks
-- **Usage-Check**: Sicherheitsprüfung vor Task-Löschung
-- **Bidirektionale Sync**: Vollständige Synchronisation in beide Richtungen
+### Task Management Integration
+- **Task Synchronization**: Automatic synchronization between local and remote tasks
+- **Orphaned Task Cleanup**: Cleanup of no longer needed remote tasks
+- **Usage Check**: Safety check before task deletion
+- **Bidirectional Sync**: Complete synchronization in both directions
 
 ## Workflow Upload Strategy
 
@@ -163,39 +163,39 @@ Warning: Missing workflows: research_blog_post_ideas v2, sub_workflow_1 v2
 Run 'idflow worker upload' to upload missing workflows
 ```
 
-## 🔄 Task-Management Integration
+## 🔄 Task Management Integration
 
-### Vollständige Synchronisation
+### Complete Synchronization
 
 ```bash
-# 1. Status prüfen
+# 1. Check status
 idflow tasks list --sync
 idflow workflow list --conductor
 
-# 2. Tasks synchronisieren
+# 2. Synchronize tasks
 idflow tasks upload --all
 
-# 3. Workflows synchronisieren
+# 3. Synchronize workflows
 idflow workflow upload
 
-# 4. Orphaned Tasks bereinigen
+# 4. Clean up orphaned tasks
 idflow tasks purge --orphaned
 ```
 
 ### Development Workflow
 
-1. **Tasks entwickeln**: Neue Tasks in `idflow/tasks/` erstellen
-2. **Tasks testen**: `idflow tasks upload task_name`
-3. **Workflows anpassen**: JSON-Dateien in `idflow/workflows/` modifizieren
-4. **Workflows testen**: `idflow workflow upload`
-5. **Integration testen**: `idflow stage evaluate`
+1. **Develop tasks**: Create new tasks in `idflow/tasks/`
+2. **Test tasks**: `idflow tasks upload task_name`
+3. **Modify workflows**: Modify JSON files in `idflow/workflows/`
+4. **Test workflows**: `idflow workflow upload`
+5. **Test integration**: `idflow stage evaluate`
 
 ### Production Deployment
 
-1. **Vollständige Sync**: Alle Tasks und Workflows synchronisieren
-2. **Orphaned Cleanup**: Nicht mehr benötigte Tasks bereinigen
-3. **Worker starten**: `idflow worker start --all`
-4. **Monitoring**: Status regelmäßig überprüfen
+1. **Complete sync**: Synchronize all tasks and workflows
+2. **Orphaned cleanup**: Clean up no longer needed tasks
+3. **Start workers**: `idflow worker start --all`
+4. **Monitoring**: Regularly check status
 
 ## Best Practices
 
