@@ -1,0 +1,5 @@
+# ID Flow Configuration
+base_dir: "data"
+config_dir: "config"
+document_implementation: "fs_markdown"
+conductor_server_url: "http://localhost:8080"

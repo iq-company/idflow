@@ -1,0 +1,10 @@
+# Project extra definitions (modular). Add more files in config/extras.d/ as needed.
+
+# Example extra (uncomment and adjust):
+# [extras.example]
+# packages = [
+#   "beautifulsoup4>=4.12.0",
+# ]
+# extends = [
+#   # "research",  # inherit from package extra or another project extra
+# ]

@@ -7,6 +7,8 @@ import sys
 import subprocess
 from pathlib import Path
 from typing import Optional
+import shutil
+import importlib.resources as ir
 import typer
 
 
@@ -109,38 +111,33 @@ def _handle_project_launch(project_name: Optional[str], target_dir: Path, venv_n
         typer.echo(f"🐍 Virtual environment activation command:")
         typer.echo(f"   {activate_cmd}")
 
-        # Try to activate the virtual environment in the current shell
+        # Launch an interactive subshell inside the project with venv activated
         try:
             if sys.platform == "win32":
-                # On Windows, we can't easily activate in the current shell
-                typer.echo(f"\n⚠️  On Windows, please manually run:")
-                typer.echo(f"   {activate_cmd}")
+                # Replace current process with cmd.exe session
+                cmd_exe = os.environ.get("COMSPEC", "cmd.exe")
+                cmd = f"cd /d \"{str(target_dir)}\" && call \"{venv_name}\\\\Scripts\\\\activate.bat\" && title idflow:{project_name or target_dir.name}"
+                typer.echo("\n🔁 Starting interactive cmd with activated venv (exit to return)...")
+                os.execv(cmd_exe, [cmd_exe, "/K", cmd])
             else:
-                # On Unix-like systems, try to source the activation script
-                typer.echo(f"\n🔄 Attempting to activate virtual environment...")
-
-                # Check if we're in a shell that supports sourcing
-                if os.environ.get('SHELL') and 'bash' in os.environ.get('SHELL', '').lower():
-                    # Try to activate by modifying the current environment
-                    venv_python = target_dir / venv_name / "bin" / "python"
-                    if venv_python.exists():
-                        # Set environment variables to simulate activation
-                        os.environ['VIRTUAL_ENV'] = str(target_dir / venv_name)
-                        os.environ['PATH'] = str(target_dir / venv_name / "bin") + ":" + os.environ.get('PATH', '')
-                        os.environ['PS1'] = f"({project_name or 'idflow'}) " + os.environ.get('PS1', '')
-
-                        typer.echo(f"✅ Virtual environment activated!")
-                        typer.echo(f"   Python: {venv_python}")
-                        typer.echo(f"   Project: {target_dir}")
-                    else:
-                        typer.echo(f"⚠️  Could not find Python in virtual environment")
-                        typer.echo(f"   Please manually run: {activate_cmd}")
+                shell = os.environ.get("SHELL", "/bin/bash")
+                venv_dir = (target_dir / venv_name).resolve()
+                venv_bin = (venv_dir / "bin").resolve()
+                # Prepare environment for the new shell
+                env = os.environ.copy()
+                env["VIRTUAL_ENV"] = str(venv_dir)
+                env["PATH"] = f"{str(venv_bin)}:" + env.get("PATH", "")
+                if "PS1" in env:
+                    env["PS1"] = f"({project_name or target_dir.name}) " + env["PS1"]
                 else:
-                    typer.echo(f"⚠️  Please manually run: {activate_cmd}")
-
+                    env["PS1"] = f"({project_name or target_dir.name}) $ "
+                # Change to project directory and exec interactive shell
+                os.chdir(target_dir)
+                typer.echo("\n🔁 Starte interaktive Shell mit aktivierter venv (exit zum Beenden)...")
+                os.execve(shell, [shell, "-i"], env)
         except Exception as e:
-            typer.echo(f"⚠️  Could not automatically activate virtual environment: {e}")
-            typer.echo(f"   Please manually run: {activate_cmd}")
+            typer.echo(f"⚠️  Konnte interaktive Shell nicht starten: {e}")
+            typer.echo(f"   Bitte manuell ausführen: cd {target_dir} && {activate_cmd}")
 
         # Show next steps
         typer.echo(f"\n🎯 Next steps:")
@@ -210,7 +207,6 @@ def init_project(
     else:
         if venv_path.exists():
             typer.echo(f"Removing invalid virtual environment: {venv_path}")
-            import shutil
             shutil.rmtree(venv_path)
 
         typer.echo(f"Creating virtual environment: {venv_path}")
@@ -269,117 +265,56 @@ def init_project(
         typer.echo(f"Error installing idflow: {e}")
         raise typer.Exit(1)
 
-    # Create basic project structure
-    typer.echo("Creating project structure...")
+    # Create project structure from template directory
+    typer.echo("Creating project structure from template...")
 
-    # Create data directories
+    template_root = ir.files("idflow") / "templates" / "project"
+    try:
+        # materialize resource to filesystem if needed and copy recursively
+        with ir.as_file(template_root) as src_path:
+            # Copy without overwriting existing files
+            for root, dirs, files in os.walk(src_path):
+                rel = Path(root).relative_to(src_path)
+                dest_dir = target_dir / rel
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                for name in files:
+                    src_file = Path(root) / name
+                    dest_file = dest_dir / name
+                    if not dest_file.exists():
+                        shutil.copy2(src_file, dest_file)
+    except Exception as e:
+        typer.echo(f"Error copying project template: {e}")
+        raise typer.Exit(1)
+
+    # Replace placeholders in templated files
+    project_display_name = project_name or target_dir.name
+    replacements = {
+        "__PROJECT_NAME__": project_display_name,
+        "__VENV_NAME__": venv_name,
+    }
+
+    for rel in [
+        "pyproject.toml",
+        "README.md",
+        ".env",
+        ".env.bat",
+        "config/idflow.yml",
+    ]:
+        fpath = target_dir / rel
+        if fpath.exists():
+            try:
+                content = fpath.read_text()
+                for k, v in replacements.items():
+                    content = content.replace(k, v)
+                fpath.write_text(content)
+            except Exception:
+                # Best-effort; continue without failing the init
+                pass
+
+    # Ensure data directories exist (template also contains .gitkeep)
     (target_dir / "data" / "inbox").mkdir(parents=True, exist_ok=True)
     (target_dir / "data" / "active").mkdir(parents=True, exist_ok=True)
     (target_dir / "data" / "done").mkdir(parents=True, exist_ok=True)
-
-    # Create config directory
-    config_dir = target_dir / "config"
-    config_dir.mkdir(exist_ok=True)
-    # Create extras.d and template
-    extras_dir = config_dir / "extras.d"
-    extras_dir.mkdir(exist_ok=True)
-    extras_template = extras_dir / "extras.toml"
-    if not extras_template.exists():
-        tpl = """# Project extra definitions (modular). Add more files in config/extras.d/ as needed.
-#
-# Example extra (uncomment and adjust):
-# [extras.example]
-# packages = [
-#   "requests>=2.31.0",
-#   "beautifulsoup4>=4.12.0",
-#   "playwright>=1.40.0",
-# ]
-# extends = [
-#   # "research",  # inherit from package extra or another project extra
-# ]
-"""
-        extras_template.write_text(tpl)
-        typer.echo("✅ Created config/extras.d/extras.toml")
-
-    # Create basic config file if it doesn't exist
-    config_file = config_dir / "idflow.yml"
-    if not config_file.exists():
-        config_content = f"""# ID Flow Configuration
-base_dir: "data"
-config_dir: "config"
-document_implementation: "fs_markdown"
-conductor_server_url: "http://localhost:8080"
-"""
-        config_file.write_text(config_content)
-        typer.echo("✅ Created config/idflow.yml")
-
-    # Create .gitignore
-    gitignore_file = target_dir / ".gitignore"
-    if not gitignore_file.exists():
-        gitignore_content = """# ID Flow
-data/
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-"""
-        gitignore_file.write_text(gitignore_content)
-        typer.echo("✅ Created .gitignore")
-
-    # Create .env file for automatic venv activation
-    env_file = target_dir / ".env"
-    if not env_file.exists():
-        if sys.platform == "win32":
-            env_content = f"""# ID Flow Environment
-# Automatically activate virtual environment when entering this directory
-# Usage: source .env (or add to your shell profile)
-
-# Activate virtual environment
-call {venv_name}\\Scripts\\activate.bat
-
-# Set project-specific environment variables
-export IDFLOW_PROJECT_DIR="{target_dir.name}"
-export IDFLOW_CONFIG_DIR="config"
-export IDFLOW_DATA_DIR="data"
-
-# Optional: Set Conductor URL
-# export CONDUCTOR_SERVER_URL="http://localhost:8080"
-"""
-        else:
-            env_content = f"""# ID Flow Environment
-# Automatically activate virtual environment when entering this directory
-# Usage: source .env (or add to your shell profile)
-
-# Activate virtual environment
-source {venv_name}/bin/activate
-
-# Set project-specific environment variables
-export IDFLOW_PROJECT_DIR="{target_dir.name}"
-export IDFLOW_CONFIG_DIR="config"
-export IDFLOW_DATA_DIR="data"
-
-# Optional: Set Conductor URL
-# export CONDUCTOR_SERVER_URL="http://localhost:8080"
-"""
-        env_file.write_text(env_content)
-        typer.echo("✅ Created .env")
 
     # Success message
     typer.echo("\n🎉 Project initialized successfully!")

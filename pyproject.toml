@@ -68,6 +68,14 @@ idflow = "idflow.__main__:app"
 where = ["."]
 include = ["idflow*"]
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+idflow = [
+  "templates/**",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "tasks"]
 python_files = ["test_*.py", "*_test.py"]
