@@ -1,5 +1,6 @@
 name: core
 active: true
+no_eval: true
 
 # Core workflows required by the CLI/runtime itself
 workflows:

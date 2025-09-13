@@ -75,9 +75,13 @@ class StageDefinition(BaseModel):
     workflows: List[WorkflowConfig] = Field(default_factory=list)
     requirements: Optional[Requirements] = None
     multiple_callable: bool = False
+    # Do not evaluate/schedule this stage (design-only)
+    no_eval: bool = False
 
     def check_requirements(self, doc) -> bool:
         """Check if the requirements for this stage are met for the given document."""
+        if self.no_eval:
+            return False
         if not self.requirements:
             return True
 

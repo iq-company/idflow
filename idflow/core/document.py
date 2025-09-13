@@ -442,6 +442,10 @@ class Document(ABC):
             can_create = True
             skip_reason = None
 
+            if getattr(stage_def, 'no_eval', False):
+                can_create = False
+                skip_reason = "no_eval"
+
             if existing_stages:
                 # Check if any stage is still active (scheduled or active)
                 active_stages = [s for s in existing_stages if s.status in {"scheduled", "active"}]
