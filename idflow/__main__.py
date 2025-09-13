@@ -29,9 +29,9 @@ app.add_typer(workflow_app, name="workflow")
 from idflow.cli.tasks import app as tasks_app
 app.add_typer(tasks_app, name="tasks")
 
-# Import the CLI features commands
-from idflow.cli.features import app as features_app
-app.add_typer(features_app, name="features")
+# Import the CLI extras commands
+from idflow.cli.extras import app as extras_app
+app.add_typer(extras_app, name="extras")
 
 # Import the CLI init command
 from idflow.cli.init import init_project

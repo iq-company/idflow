@@ -161,7 +161,7 @@ def init_project(
     project_name: Optional[str] = typer.Argument(None, help="Project name (creates new directory or uses current directory if no project name is provided)"),
     python: str = typer.Option("python3", "--python", help="Python executable to use"),
     venv_name: str = typer.Option(".venv", "--venv", help="Virtual environment directory name"),
-    add_feature: list[str] = typer.Option([], "--add-feature", help="Add feature to install (can be used multiple times)"),
+    add_extra: list[str] = typer.Option([], "--add-extra", help="Add extra to install (can be used multiple times)"),
     launch_project: Optional[bool] = typer.Option(None, "--launch-project/--no-launch-project", help="Whether to launch the project after initialization (prompt if not specified)")
 ):
     """
@@ -247,18 +247,18 @@ def init_project(
             typer.echo(f"🔧 Detected local idflow development environment")
             typer.echo(f"   Using local idflow from: {local_idflow_path}")
 
-            if add_feature:
-                # For local development, we can't use feature syntax
-                typer.echo(f"   Note: Features {', '.join(add_feature)} will be available from local installation")
+            if add_extra:
+                # For local development, we can't use extras syntax
+                typer.echo(f"   Note: Extras {', '.join(add_extra)} will be available from local installation")
 
             install_cmd = [str(pip_exe), "install", "-e", str(local_idflow_path)]
         else:
             # Use PyPI installation
-            if add_feature:
-                # Create feature string like "research,writer"
-                features_str = ",".join(add_feature)
-                install_cmd = [str(pip_exe), "install", f"idflow[{features_str}]"]
-                typer.echo(f"Installing idflow with features: {', '.join(add_feature)}")
+            if add_extra:
+                # Create extras string like "research,writer"
+                extras_str = ",".join(add_extra)
+                install_cmd = [str(pip_exe), "install", f"idflow[{extras_str}]"]
+                typer.echo(f"Installing idflow with extras: {', '.join(add_extra)}")
             else:
                 install_cmd = [str(pip_exe), "install", "idflow"]
                 typer.echo("Installing idflow (base)")
@@ -280,26 +280,26 @@ def init_project(
     # Create config directory
     config_dir = target_dir / "config"
     config_dir.mkdir(exist_ok=True)
-    # Create features.d and template
-    features_dir = config_dir / "features.d"
-    features_dir.mkdir(exist_ok=True)
-    features_template = features_dir / "features.toml"
-    if not features_template.exists():
-        tpl = """# Project feature definitions (modular). Add more files in config/features.d/ as needed.
+    # Create extras.d and template
+    extras_dir = config_dir / "extras.d"
+    extras_dir.mkdir(exist_ok=True)
+    extras_template = extras_dir / "extras.toml"
+    if not extras_template.exists():
+        tpl = """# Project extra definitions (modular). Add more files in config/extras.d/ as needed.
 #
-# Example feature (uncomment and adjust):
-# [features.example]
+# Example extra (uncomment and adjust):
+# [extras.example]
 # packages = [
 #   "requests>=2.31.0",
 #   "beautifulsoup4>=4.12.0",
 #   "playwright>=1.40.0",
 # ]
 # extends = [
-#   # "research",  # inherit from package extra or another project feature
+#   # "research",  # inherit from package extra or another project extra
 # ]
 """
-        features_template.write_text(tpl)
-        typer.echo("✅ Created config/features.d/features.toml")
+        extras_template.write_text(tpl)
+        typer.echo("✅ Created config/extras.d/extras.toml")
 
     # Create basic config file if it doesn't exist
     config_file = config_dir / "idflow.yml"

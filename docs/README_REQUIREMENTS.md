@@ -97,13 +97,13 @@ requirements:
 - `HAS` / `CONTAINS` / `INCLUDES` - Contains value
 - `NOT_HAS` / `NOT_CONTAINS` / `NOT_INCLUDES` - Does not contain value
 
-### 5. Feature Requirements
+### 5. Extra Requirements
 
-Gate a stage by optional features (extras or project-defined features). All listed features must be installed.
+Gate a stage by optional extras (package extras or project-defined extras). All listed extras must be installed.
 
 ```yaml
 requirements:
-  features:
+  extras:
     - research
     - test
 ```
@@ -241,8 +241,8 @@ requirements:
       value: 'draft'
       case_sensitive: false
 
-  # Feature gates
-  features:
+  # Extra gates
+  extras:
     - research
 
   # Additional required task names (for dynamic scheduling)

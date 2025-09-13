@@ -61,7 +61,8 @@ class Requirements(BaseModel):
     stages: Optional[Dict[str, StageRequirement]] = None
     attribute_checks: Optional[List[AttributeCheck]] = None
     list_checks: Optional[List[ListCheck]] = None
-    features: Optional[List[str]] = None
+    # New preferred key
+    extras: Optional[List[str]] = None
     # optional list of additionally required task names for dynamic scheduling
     # Accept either plain strings or objects with a 'name' field for convenience
     tasks: Optional[List[Union[str, Dict[str, Any]]]] = None
@@ -80,11 +81,12 @@ class StageDefinition(BaseModel):
         if not self.requirements:
             return True
 
-        # Check feature requirements first (static, independent of document)
-        if self.requirements.features:
+        # Check extras/feature requirements first (static, independent of document)
+        feature_list = self.requirements.extras
+        if feature_list:
             try:
                 from .optional_deps import is_optional_dependency_installed
-                for feature in self.requirements.features:
+                for feature in feature_list:
                     if not is_optional_dependency_installed(feature):
                         return False
             except Exception:

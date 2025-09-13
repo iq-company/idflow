@@ -133,9 +133,9 @@ idflow/
 - `litellm>=1.0.0` - LLM integration
 - `keybert>=0.9.0` - Keyword extraction
 
-### Optional Dependencies
-- `idflow[research]` - Research features
-- `idflow[test]` - Testing dependencies
+### Optional Dependencies (Extras)
+- `idflow[research]` - Research extra
+- `idflow[test]` - Testing extra
 
 ## Troubleshooting
 

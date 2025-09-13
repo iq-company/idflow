@@ -28,8 +28,8 @@ idflow --help
 # Create new project with virtual environment
 idflow init myproject
 
-# Create project with features
-idflow init myproject --add-feature research --add-feature writer
+# Create project with extras
+idflow init myproject --add-extra research --add-extra writer
 ```
 
 ### Initialize Current Directory
@@ -38,8 +38,8 @@ idflow init myproject --add-feature research --add-feature writer
 # Initialize current directory (if empty or only contains .venv)
 idflow init
 
-# Initialize with features
-idflow init --add-feature research --add-feature writer
+# Initialize with extras
+idflow init --add-extra research --add-extra writer
 ```
 
 ### Smart Installation

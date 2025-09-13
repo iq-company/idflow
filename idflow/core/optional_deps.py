@@ -1,11 +1,11 @@
 """
-Utilities to manage and check optional feature dependencies.
+Utilities to manage and check optional dependencies (extras).
 
-Supports two sources of feature definitions:
+Supports two sources of extra definitions:
 - Package extras (from the installed idflow distribution metadata)
-- Project-defined features from config/features.toml (or features.toml)
+- Project-defined extras from config/extras.d/*.toml
 
-A feature is considered installed if all of its required distributions are importable
+An extra is considered installed if all of its required distributions are importable
 (importlib.metadata.distribution succeeds), ignoring version constraints for the check.
 """
 from __future__ import annotations
@@ -53,15 +53,10 @@ def _parse_requires_dist_for_extra(dist: importlib.metadata.Distribution) -> Dic
 
 
 def _project_features_sources() -> List[Path]:
-    """Return project feature file candidates in load order (earlier overridden by later)."""
+    """Return project extras file candidates in load order (earlier overridden by later)."""
     paths: List[Path] = []
-    # base files
-    if (Path("config") / "features.toml").exists():
-        paths.append(Path("config") / "features.toml")
-    if Path("features.toml").exists():
-        paths.append(Path("features.toml"))
     # modular directory
-    ddir = Path("config") / "features.d"
+    ddir = Path("config") / "extras.d"
     if ddir.exists() and ddir.is_dir():
         for p in sorted(ddir.glob("*.toml")):
             paths.append(p)
@@ -72,8 +67,8 @@ def _parse_project_features_file(path: Path) -> Dict[str, Dict[str, List[str]]]:
     """
     Parse a single TOML file.
     Supports two styles:
-    - [features] simple mapping: name = [reqs]
-    - [features.name] with keys: packages=[...], extends=[...]
+    - [extras] simple mapping: name = [reqs]
+    - [extras.name] with keys: packages=[...], extends=[...]
     Returns: { name: {"packages": [...], "extends": [...] } }
     """
     import tomllib
@@ -84,7 +79,7 @@ def _parse_project_features_file(path: Path) -> Dict[str, Dict[str, List[str]]]:
     except Exception:
         return out
 
-    features = data.get("features", {})
+    features = data.get("extras", {})
 
     # If table of tables style
     if isinstance(features, dict) and any(isinstance(v, dict) for v in features.values()):
@@ -117,7 +112,7 @@ def _parse_project_features_file(path: Path) -> Dict[str, Dict[str, List[str]]]:
 
 
 def _merge_project_features() -> Dict[str, Dict[str, List[str]]]:
-    """Merge project feature sources; later files override earlier definitions entirely for the same name."""
+    """Merge project extras sources; later files override earlier definitions entirely for the same name."""
     merged: Dict[str, Dict[str, List[str]]] = {}
     for path in _project_features_sources():
         parsed = _parse_project_features_file(path)
@@ -275,7 +270,7 @@ def _is_all_requirements_installed(requirements: List[str]) -> bool:
 
 
 def get_available_features() -> Dict[str, List[str]]:
-    """Resolve available features from package extras + project features (config/features.toml, features.d/*.toml)."""
+    """Resolve available extras from package extras + project extras (config/extras.d/*.toml)."""
     base = _package_extras()
     project = _merge_project_features()
     return _resolve_features_with_extends(base, project)
@@ -283,21 +278,26 @@ def get_available_features() -> Dict[str, List[str]]:
 
 def get_feature_origin_map() -> Dict[str, str]:
     """
-    Return a map of feature name -> origin category: 'extra' or 'project'.
-    If a feature exists as package extra, it's categorized as 'extra' (even if also defined in project via extends/override),
-    otherwise as 'project'.
+    Return a map of extra name -> origin category: 'standard' or 'custom'.
+    If a name exists as package extra, it's categorized as 'standard' (even if also defined in project via extends/override),
+    otherwise as 'custom'.
     """
     base = _package_extras()
     project = _merge_project_features()
     names: Set[str] = set(base.keys()) | set(project.keys())
     origin: Dict[str, str] = {}
     for n in names:
-        origin[n] = 'extra' if n in base else 'project'
+        if n in base and n in project:
+            origin[n] = 'extended'
+        elif n in base:
+            origin[n] = 'standard'
+        else:
+            origin[n] = 'custom'
     return origin
 
 
 def get_installed_optional_dependencies() -> List[str]:
-    """Return names of features whose requirements are installed."""
+    """Return names of extras whose requirements are installed."""
     available = get_available_features()
     installed: List[str] = []
     for name, reqs in available.items():
@@ -307,17 +307,17 @@ def get_installed_optional_dependencies() -> List[str]:
 
 
 def is_optional_dependency_installed(extra_name: str) -> bool:
-    """Check if a specific feature's requirements are installed."""
+    """Check if a specific extra's requirements are installed."""
     available = get_available_features()
     reqs = available.get(extra_name, [])
     if not reqs:
-        # Unknown feature => consider not installed
+        # Unknown extra => consider not installed
         return False
     return _is_all_requirements_installed(reqs)
 
 
 def get_optional_dependencies_info() -> Dict[str, object]:
-    """Return detailed information about optional dependencies/features."""
+    """Return detailed information about optional dependencies (extras)."""
     available_map = get_available_features()
     installed = get_installed_optional_dependencies()
     return {
@@ -330,13 +330,13 @@ def get_optional_dependencies_info() -> Dict[str, object]:
 
 def require_optional_dependency(extra_name: str, feature_description: str | None = None) -> None:
     """
-    Raise ImportError if the named feature is not installed.
+    Raise ImportError if the named extra is not installed.
     """
     if not is_optional_dependency_installed(extra_name):
         feature_desc = f" for {feature_description}" if feature_description else ""
         raise ImportError(
             f"Optional dependency '{extra_name}' is not installed{feature_desc}. "
-            f"Install it with: pip install idflow[{extra_name}] or define in config/features.toml"
+            f"Install it with: pip install idflow[{extra_name}] or define in config/extras.toml"
         )
 
 

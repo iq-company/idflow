@@ -86,7 +86,7 @@ def required_workflow_names_static() -> List[str]:
         sd = stage_defs.get_definition(stage_name)
         if not sd or not sd.active:
             continue
-        feats = (sd.requirements.features if sd.requirements else None) or []
+        feats = (sd.requirements.extras if sd.requirements else None) or []
         if any(not is_optional_dependency_installed(f) for f in feats):
             continue
         for wf in sd.workflows:
