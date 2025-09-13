@@ -437,42 +437,119 @@ class StageDefinitions:
         self._load_definitions()
 
     def _load_definitions(self) -> None:
-        """Load all stage definitions from YAML files with package->project overlay."""
+        """Load all stage definitions from YAML files with name-based deep merge (package -> project)."""
         self._definitions.clear()
 
-        def _load_dir(dir_path: Path) -> None:
+        def _read_yaml(file_path: Path) -> Optional[Dict[str, Any]]:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                return data if isinstance(data, dict) else None
+            except Exception as e:
+                print(f"Warning: Failed to read YAML from {file_path}: {e}")
+                return None
+
+        def _merge_workflow_lists(base_list: List[Dict[str, Any]], overlay_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+            # Merge by workflow name; items without name fall back to replacement
+            try:
+                base_map = {str(i.get('name')): i for i in base_list if isinstance(i, dict) and 'name' in i}
+                result = [i for i in base_list if not (isinstance(i, dict) and 'name' in i)]
+                for item in overlay_list:
+                    if isinstance(item, dict) and 'name' in item:
+                        name = str(item['name'])
+                        if name in base_map:
+                            base_item = base_map[name]
+                            # deep merge dicts
+                            result.append(_deep_merge_dicts(base_item, item))
+                            del base_map[name]
+                        else:
+                            result.append(item)
+                    else:
+                        # Non-dict or missing name: append as-is
+                        result.append(item)
+                # Append remaining base named items not overridden
+                for name, base_item in base_map.items():
+                    result.append(base_item)
+                return result
+            except Exception:
+                # Fallback: replace
+                return overlay_list
+
+        def _deep_merge_dicts(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+            merged: Dict[str, Any] = dict(base)
+            for k, v in overlay.items():
+                if k in merged:
+                    bv = merged[k]
+                    if isinstance(bv, dict) and isinstance(v, dict):
+                        merged[k] = _deep_merge_dicts(bv, v)
+                    elif k == 'workflows' and isinstance(bv, list) and isinstance(v, list):
+                        merged[k] = _merge_workflow_lists(bv, v)
+                    else:
+                        merged[k] = v
+                else:
+                    merged[k] = v
+            return merged
+
+        # Expose helper inside method scope
+        _deep_merge_dicts_ref = _deep_merge_dicts
+
+        # Collect package then overlay project by stage name
+        merged_by_name: Dict[str, Dict[str, Any]] = {}
+
+        def _collect_from_dir(dir_path: Path, is_overlay: bool) -> None:
             if not dir_path.exists():
                 return
             for yaml_file in dir_path.glob("*.yml"):
-                try:
-                    with open(yaml_file, 'r', encoding='utf-8') as f:
-                        data = yaml.safe_load(f)
-                    if not data or not isinstance(data, dict):
-                        continue
-                    stage_def = StageDefinition(**data)
-                    if stage_def.active:
-                        # assign/overlay by name
-                        self._definitions[stage_def.name] = stage_def
-                except Exception as e:
-                    print(f"Warning: Failed to load stage definition from {yaml_file}: {e}")
+                data = _read_yaml(yaml_file)
+                if not data:
                     continue
+                stage_name = data.get('name')
+                if not stage_name:
+                    continue
+                if stage_name in merged_by_name and is_overlay:
+                    merged_by_name[stage_name] = _deep_merge_dicts_ref(merged_by_name[stage_name], data)
+                elif stage_name in merged_by_name and not is_overlay:
+                    # Multiple package files with same name: merge as well
+                    merged_by_name[stage_name] = _deep_merge_dicts_ref(merged_by_name[stage_name], data)
+                else:
+                    merged_by_name[stage_name] = data
 
         # If explicit directory provided, load only there
         if self.stages_dir is not None:
-            _load_dir(self.stages_dir)
+            _collect_from_dir(self.stages_dir, is_overlay=False)
+            # No project overlay when explicit dir is provided
+            # Build definitions
+            self._definitions.clear()
+            for name, data in merged_by_name.items():
+                try:
+                    stage_def = StageDefinition(**data)
+                    if stage_def.active:
+                        self._definitions[stage_def.name] = stage_def
+                except Exception as e:
+                    print(f"Warning: Failed to load stage definition '{name}' from {self.stages_dir}: {e}")
             return
 
         # 1) package stages
         try:
             pkg_root = Path(ir.files("idflow"))
             pkg_stages = pkg_root / "stages"
-            _load_dir(pkg_stages)
+            _collect_from_dir(pkg_stages, is_overlay=False)
         except Exception:
             pass
 
         # 2) overlay with project stages
         proj_stages = Path("stages")
-        _load_dir(proj_stages)
+        _collect_from_dir(proj_stages, is_overlay=True)
+
+        # Build definitions from merged data
+        self._definitions.clear()
+        for name, data in merged_by_name.items():
+            try:
+                stage_def = StageDefinition(**data)
+                if stage_def.active:
+                    self._definitions[stage_def.name] = stage_def
+            except Exception as e:
+                print(f"Warning: Failed to load merged stage definition '{name}': {e}")
 
     def get_definition(self, stage_name: str) -> Optional[StageDefinition]:
         """Get a stage definition by name."""

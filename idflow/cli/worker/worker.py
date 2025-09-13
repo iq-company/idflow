@@ -156,7 +156,7 @@ def list_workers():
         task_name = extract_task_name_from_file(task_file)
         if task_name:
             suffix = "" if task_name in required else " (inactive)"
-            typer.echo(f"  - {task_name}{suffix} ({task_file})")
+            typer.echo(f"  - {task_name}{suffix}")
         else:
             typer.echo(f"  - {task_file} (no task name found)")
 

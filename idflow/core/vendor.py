@@ -62,11 +62,27 @@ def normalize_element_name(section: str, element: str) -> Optional[str]:
         return element if element in available else None
 
 def is_extended(section: str, element: str, dest: Path) -> bool:
-    """Return True if the element already exists in the destination project."""
+    """Return True if the element already exists in the destination project.
+
+    stages: interpret by stage name (from YAML), not by filename. This aligns with
+    runtime behavior where stage identity is the 'name' field.
+    """
     dest = dest.resolve()
     if section == "stages":
-        fname = element if element.endswith(".yml") else f"{element}.yml"
-        return (dest / section / fname).exists()
+        # Look for any YAML in project stages whose 'name' equals element (stem allowed)
+        target_name = element[:-4] if element.endswith('.yml') else element
+        proj_dir = dest / section
+        if not proj_dir.exists():
+            return False
+        for yml in proj_dir.glob("*.yml"):
+            try:
+                import yaml
+                data = yaml.safe_load(yml.read_text(encoding='utf-8'))
+                if isinstance(data, dict) and data.get('name') == target_name:
+                    return True
+            except Exception:
+                continue
+        return False
     else:
         return (dest / section / element).exists()
 

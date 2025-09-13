@@ -75,12 +75,6 @@ def overlay_task_dirs() -> Dict[str, Path]:
     """Tasks/Worker nach Verzeichnisnamen überlagern (tasks/<name>/...)."""
     return OverlayDiscovery("tasks", mode="dir").overlay()
 
-
-def overlay_stage_files() -> Dict[str, Path]:
-    """Stages nach Dateinamen überlagern (stages/*.yml)."""
-    return OverlayDiscovery("stages", mode="file", file_glob="*.yml").overlay()
-
-
 def required_workflow_names_static() -> List[str]:
     """Bestimme benötigte Workflows anhand aktiver Stages und erfüllter Features."""
     from .stage_definitions import get_stage_definitions
