@@ -43,8 +43,12 @@ def list_features():
 
     typer.echo("Available features:")
     if available:
-        for f in available:
-            typer.echo(f"  {f}")
+        origin_map = get_feature_origin_map()
+        rows = [(f, 'standard' if origin_map.get(f) == 'standard' else 'custom') for f in available]
+        name_w = max(len(r[0]) for r in rows)
+        origin_w = max(len(r[1]) for r in rows)
+        for name, origin in rows:
+            typer.echo(f"  {name.ljust(name_w)}  {origin.ljust(origin_w)}")
     else:
         typer.echo("  (none)")
 

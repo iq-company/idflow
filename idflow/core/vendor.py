@@ -93,7 +93,24 @@ def overview(dest: Path) -> Dict[str, List[Tuple[str, bool]]]:
     for section in COPYABLE_DIRS:
         items = []
         for el in list_elements(section):
-            items.append((el, is_extended(section, el, dest)))
+            if section == "stages":
+                # Convert YAML filename to stage name from its 'name' field
+                stage_name = None
+                try:
+                    import yaml
+                    yml_path = get_vendor_root() / section / el
+                    data_yml = yaml.safe_load(yml_path.read_text(encoding='utf-8'))
+                    if isinstance(data_yml, dict):
+                        stage_name = data_yml.get('name') or None
+                except Exception:
+                    stage_name = None
+                if not stage_name:
+                    # Fallback to stem if parsing failed
+                    stage_name = el[:-4] if el.endswith('.yml') else el
+                # Determine extended by stage name semantics
+                items.append((stage_name, is_extended(section, stage_name, dest)))
+            else:
+                items.append((el, is_extended(section, el, dest)))
         data[section] = items
     return data
 

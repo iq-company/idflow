@@ -140,25 +140,72 @@ def load_task_function(task_file: Path, task_name: str):
 
 
 @app.command("list")
-def list_workers():
-    """List all available task workers."""
-    worker_files = discover_worker_files()
-    from idflow.core.discovery import required_task_names_static
-    required = set(required_task_names_static())
+def list_workers(prefix: bool = typer.Option(False, "--prefix", help="Use compact prefix style (std|ext|cus)")):
+    """List all available task workers with status and origin classification."""
+    from idflow.core.discovery import OverlayDiscovery, required_task_names_static
 
-    if not worker_files:
+    # Maps of task root dirs by name for package and project
+    od = OverlayDiscovery("tasks", mode="dir")
+    pkg_dirs = od.package_items()
+    proj_dirs = od.project_items()
+    overlay_dirs = {**pkg_dirs, **proj_dirs}
+
+    # Collect rows: (task_name, status_label, origin, origin_tag)
+    required = set(required_task_names_static())
+    rows = []
+
+    # Iterate per top-level task dir to retain dir name for origin classification
+    for dir_name, dir_path in overlay_dirs.items():
+        try:
+            for p in dir_path.rglob("*.py"):
+                if p.name == "__init__.py":
+                    continue
+                try:
+                    content = p.read_text(encoding='utf-8')
+                except Exception:
+                    continue
+                if "@worker_task" not in content:
+                    continue
+                task_name = extract_task_name_from_file(p) or p.stem
+                status_label = "active" if task_name in required else "unused"
+                in_pkg = dir_name in pkg_dirs
+                in_proj = dir_name in proj_dirs
+                if in_pkg and in_proj:
+                    origin, origin_tag = "extended", "ext"
+                elif in_pkg:
+                    origin, origin_tag = "standard", "std"
+                else:
+                    origin, origin_tag = "custom", "cus"
+                rows.append((task_name, status_label, origin, origin_tag))
+        except Exception:
+            continue
+
+    if not rows:
         typer.echo("No worker files found")
         return
 
-    typer.echo(f"Found {len(worker_files)} worker files:")
+    # Deduplicate by task_name keeping first occurrence (project overrides)
+    seen = set()
+    unique_rows = []
+    for r in rows:
+        if r[0] in seen:
+            continue
+        seen.add(r[0])
+        unique_rows.append(r)
 
-    for task_file in worker_files:
-        task_name = extract_task_name_from_file(task_file)
-        if task_name:
-            suffix = "" if task_name in required else " (inactive)"
-            typer.echo(f"  - {task_name}{suffix}")
-        else:
-            typer.echo(f"  - {task_file} (no task name found)")
+    unique_rows.sort(key=lambda x: x[0])
+
+    if prefix:
+        for name, status_label, _origin, origin_tag in unique_rows:
+            typer.echo(f"({origin_tag}) {name} [{status_label}]")
+        return
+
+    name_w = max(len(r[0]) for r in unique_rows)
+    status_w = max(len(r[1]) for r in unique_rows)
+    origin_w = max(len(r[2]) for r in unique_rows)
+
+    for name, status_label, origin, _tag in unique_rows:
+        typer.echo(f"{name.ljust(name_w)}  {status_label.ljust(status_w)}  {origin.ljust(origin_w)}")
 
 
 @app.command("ps")
