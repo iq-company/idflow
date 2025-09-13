@@ -1,7 +1,7 @@
 # idflow/core/vendor.py
 from __future__ import annotations
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict, Optional
 import shutil
 import typer
 import importlib.resources as ir
@@ -28,6 +28,58 @@ def list_copyable() -> List[Tuple[int, str, Path]]:
         p = root / rel
         items.append((i, rel, p))
     return items
+
+def list_sections() -> List[str]:
+    """Return available vendor sections (e.g., tasks, workflows, stages)."""
+    return list(COPYABLE_DIRS)
+
+def list_elements(section: str) -> List[str]:
+    """List element names for a given section.
+
+    - tasks/workflows: subdirectory names
+    - stages: yaml filenames
+    """
+    root = get_vendor_root() / section
+    if not root.exists():
+        return []
+    if section == "stages":
+        return [p.name for p in sorted(root.glob("*.yml")) if p.is_file()]
+    else:
+        return [p.name for p in sorted(root.iterdir()) if p.is_dir()]
+
+def normalize_element_name(section: str, element: str) -> Optional[str]:
+    """Normalize element for matching, esp. stages (with/without .yml)."""
+    available = set(list_elements(section))
+    if section == "stages":
+        if element in available:
+            return element
+        # allow passing stem without extension
+        with_yml = f"{element}.yml"
+        if with_yml in available:
+            return with_yml
+        return None
+    else:
+        return element if element in available else None
+
+def is_extended(section: str, element: str, dest: Path) -> bool:
+    """Return True if the element already exists in the destination project."""
+    dest = dest.resolve()
+    if section == "stages":
+        fname = element if element.endswith(".yml") else f"{element}.yml"
+        return (dest / section / fname).exists()
+    else:
+        return (dest / section / element).exists()
+
+def overview(dest: Path) -> Dict[str, List[Tuple[str, bool]]]:
+    """Build overview mapping: section -> list of (element, is_extended)."""
+    dest = dest.resolve()
+    data: Dict[str, List[Tuple[str, bool]]] = {}
+    for section in COPYABLE_DIRS:
+        items = []
+        for el in list_elements(section):
+            items.append((el, is_extended(section, el, dest)))
+        data[section] = items
+    return data
 
 def ensure_is_subpath(base: Path, target: Path) -> None:
     try:
@@ -63,6 +115,46 @@ def copy_tree_with_prompt(src: Path, dst: Path) -> None:
             out.parent.mkdir(parents=True, exist_ok=True)
 
         shutil.copyfile(path, out)
+
+def copy_element_with_target_prompt(section: str, element: str, dest: Path) -> None:
+    """Copy a single element from a section into dest.
+
+    - stages: copy file level
+    - others: copy directory level (with per-file overwrite prompts)
+    """
+    section = section.strip()
+    dest = dest.resolve()
+    vendor_root = get_vendor_root() / section
+    if not vendor_root.exists():
+        raise typer.BadParameter(f"Unbekannte Sektion: {section}")
+
+    normalized = normalize_element_name(section, element)
+    if normalized is None:
+        raise typer.BadParameter(f"Element nicht gefunden: {element} in {section}")
+
+    if section == "stages":
+        src = vendor_root / normalized
+        if not src.exists() or not src.is_file():
+            raise typer.BadParameter(f"Quelle existiert nicht: {src}")
+        dst = dest / section / src.name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            typer.echo(f"Target already exists in: {dst}")
+            if not typer.confirm("Do you want to replace it?"):
+                typer.echo("Abgebrochen (kein Ersatz).")
+                return
+        shutil.copyfile(src, dst)
+    else:
+        src = vendor_root / normalized
+        if not src.exists() or not src.is_dir():
+            raise typer.BadParameter(f"Quelle existiert nicht: {src}")
+        dst = dest / section / normalized
+        if dst.exists():
+            typer.echo(f"Target already exists in: {dst}")
+            if not typer.confirm("Do you want to replace it?"):
+                typer.echo("Abgebrochen (kein Ersatz).")
+                return
+        copy_tree_with_prompt(src, dst)
 
 def _prompt_overwrite(relpath: Path) -> str:
     # einfaches Prompt mit validierten Optionen

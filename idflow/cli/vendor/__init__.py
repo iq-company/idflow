@@ -1,8 +1,10 @@
 import typer
 from .copy import copy_vendor
+from .list import list_vendor
 
 app = typer.Typer(add_completion=False)
 app.command("copy")(copy_vendor)
+app.command("list")(list_vendor)
 
 # Usage:
 # ===
