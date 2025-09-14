@@ -18,7 +18,7 @@ class WorkflowManager:
         self._last_upload_results = None
 
     def discover_workflows(self) -> List[Path]:
-        """Discover workflow JSON files from project and package, with project overriding by name."""
+        """Discover workflow JSON files using ResourceResolver overlay semantics."""
         # If an explicit directory was provided, use it as a single source
         if self.workflows_dir is not None:
             workflows: List[Path] = []
@@ -27,25 +27,10 @@ class WorkflowManager:
                     workflows.append(workflow_file)
             return workflows
 
-        def _load_workflow_name(path: Path) -> Optional[str]:
-            try:
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                return data.get('name')
-            except Exception:
-                return None
-
-        discovered: Dict[str, Path] = {}
-
-        # Use shared discovery util for overlay by directory names, then collect json files
-        from .discovery import overlay_workflow_dirs
-        workflows: List[Path] = []
-        for wf_dir in overlay_workflow_dirs().values():
-            for workflow_file in wf_dir.rglob("*.json"):
-                if workflow_file.name == "event_handlers.json":
-                    continue
-                workflows.append(workflow_file)
-        return workflows
+        # Use ResourceResolver to flatten files across lib -> vendors -> project
+        from .resource_resolver import ResourceResolver
+        rr = ResourceResolver()
+        return rr.collect_flattened_files("workflows", "*.json", exclude_filenames={"event_handlers.json"})
 
     def find_workflow_file(self, workflow_name: str) -> Optional[Path]:
         """Find workflow file by name."""
@@ -56,7 +41,7 @@ class WorkflowManager:
         return None
 
     def discover_tasks(self) -> List[Path]:
-        """Discover task Python files from project and package, with project overriding by task name."""
+        """Discover task Python files using ResourceResolver overlay semantics."""
         # If an explicit directory was provided, use it as a single source
         if self.tasks_dir is not None:
             tasks: List[Path] = []
@@ -65,26 +50,10 @@ class WorkflowManager:
                     tasks.append(task_file)
             return tasks
 
-        def _extract_task_name(path: Path) -> Optional[str]:
-            try:
-                content = path.read_text(encoding='utf-8')
-                if "@worker_task" not in content:
-                    return None
-                import re
-                m = re.search(r"@worker_task\(task_definition_name='([^']+)'\)", content)
-                return m.group(1) if m else None
-            except Exception:
-                return None
-
-        # Use shared discovery util for overlay by directory names, then collect .py files
-        from .discovery import overlay_task_dirs
-        tasks: List[Path] = []
-        for task_dir in overlay_task_dirs().values():
-            for task_file in task_dir.rglob("*.py"):
-                if task_file.name == "__init__.py":
-                    continue
-                tasks.append(task_file)
-        return tasks
+        # Use ResourceResolver to flatten files across lib -> vendors -> project
+        from .resource_resolver import ResourceResolver
+        rr = ResourceResolver()
+        return rr.collect_flattened_files("tasks", "*.py", exclude_filenames={"__init__.py"})
 
     def load_workflow_definition(self, workflow_file: Path) -> Optional[Dict[str, Any]]:
         """Load workflow definition from JSON file."""
@@ -353,6 +322,63 @@ class WorkflowManager:
         except Exception as e:
             print(f"Error connecting to Conductor: {e}")
             return []
+
+    # --- Requirements helpers (Resolver-based) ---
+    def required_workflow_names(self) -> List[str]:
+        """Determine required workflow names based on active stages and fulfilled extras."""
+        from .stage_definitions import get_stage_definitions
+        from .optional_deps import is_optional_dependency_installed
+
+        stage_defs = get_stage_definitions()
+        required: set[str] = set()
+        for stage_name in stage_defs.list_definitions():
+            sd = stage_defs.get_definition(stage_name)
+            if not sd or not sd.active:
+                continue
+            feats = (sd.requirements.extras if sd.requirements else None) or []
+            if any(not is_optional_dependency_installed(f) for f in feats):
+                continue
+            for wf in sd.workflows:
+                required.add(wf.name)
+        return sorted(required)
+
+    def required_task_names(self) -> List[str]:
+        """Determine required task names from required workflows and stage-declared tasks."""
+        from .stage_definitions import get_stage_definitions
+        import json as _json
+        from .resource_resolver import ResourceResolver
+
+        required_wfs = set(self.required_workflow_names())
+        required_tasks: set[str] = set()
+
+        rr = ResourceResolver()
+        for json_file in rr.collect_flattened_files("workflows", "*.json", exclude_filenames={"event_handlers.json"}):
+            try:
+                data = _json.loads(json_file.read_text(encoding='utf-8'))
+                wf_name = data.get('name')
+                if wf_name and wf_name not in required_wfs:
+                    continue
+                for task in data.get('tasks', []):
+                    tn = task.get('name') or task.get('taskReferenceName')
+                    if tn:
+                        required_tasks.add(tn)
+            except Exception:
+                continue
+
+        # Stage-declared extra task names (string or {name: ...})
+        stage_defs = get_stage_definitions()
+        for stage_name in stage_defs.list_definitions():
+            sd = stage_defs.get_definition(stage_name)
+            if not sd or not sd.active or not sd.requirements:
+                continue
+            extra = getattr(sd.requirements, 'tasks', None) or []
+            for t in extra:
+                if isinstance(t, str):
+                    required_tasks.add(t)
+                elif isinstance(t, dict) and 'name' in t:
+                    required_tasks.add(str(t['name']))
+
+        return sorted(required_tasks)
 
     def get_workflow_sync_status(self) -> Dict[str, Any]:
         """Get synchronization status between local and remote workflows."""

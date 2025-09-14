@@ -111,6 +111,45 @@ def _parse_project_features_file(path: Path) -> Dict[str, Dict[str, List[str]]]:
     return out
 
 
+def _merge_vendor_features() -> Dict[str, Dict[str, List[str]]]:
+    """Merge vendor extras sources using ResourceResolver."""
+    merged: Dict[str, Dict[str, List[str]]] = {}
+    try:
+        from .resource_resolver import ResourceResolver
+        resolver = ResourceResolver()
+
+        # Get vendor roots only (exclude lib and project)
+        vendor_roots = []
+        for name, root in resolver.bases():
+            if name not in ("lib", "project"):  # vendor bases have other names
+                vendor_roots.append(root)
+
+        for vendor_root in vendor_roots:
+            extras_dir = vendor_root / "config" / "extras.d"
+            if not extras_dir.exists():
+                continue
+            for toml_file in extras_dir.glob("*.toml"):
+                try:
+                    import tomllib
+                    with open(toml_file, "rb") as f:
+                        data = tomllib.load(f) or {}
+                    for feature_name, entry in data.items():
+                        if not isinstance(entry, dict):
+                            continue
+                        packages = entry.get("packages", [])
+                        extends = entry.get("extends", [])
+                        if isinstance(packages, list):
+                            merged[feature_name] = {
+                                "packages": [str(x) for x in packages],
+                                "extends": [str(x) for x in extends] if isinstance(extends, list) else []
+                            }
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return merged
+
+
 def _merge_project_features() -> Dict[str, Dict[str, List[str]]]:
     """Merge project extras sources; later files override earlier definitions entirely for the same name."""
     merged: Dict[str, Dict[str, List[str]]] = {}
@@ -270,26 +309,36 @@ def _is_all_requirements_installed(requirements: List[str]) -> bool:
 
 
 def get_available_features() -> Dict[str, List[str]]:
-    """Resolve available extras from package extras + project extras (config/extras.d/*.toml)."""
+    """Resolve available extras from package extras + vendor extras + project extras (config/extras.d/*.toml)."""
     base = _package_extras()
+    vendor = _merge_vendor_features()
     project = _merge_project_features()
-    return _resolve_features_with_extends(base, project)
+
+    # Merge in order: base -> vendor -> project
+    temp = _resolve_features_with_extends(base, vendor)
+    return _resolve_features_with_extends(temp, project)
 
 
 def get_feature_origin_map() -> Dict[str, str]:
     """
-    Return a map of extra name -> origin category: 'standard' or 'custom'.
-    If a name exists as package extra, it's categorized as 'standard' (even if also defined in project via extends/override),
-    otherwise as 'custom'.
+    Return a map of extra name -> origin category: 'standard', 'vendor', 'extended', or 'custom'.
+    Uses same priority logic as ResourceResolver: vendor > standard.
     """
     base = _package_extras()
+    vendor = _merge_vendor_features()
     project = _merge_project_features()
-    names: Set[str] = set(base.keys()) | set(project.keys())
+    names: Set[str] = set(base.keys()) | set(vendor.keys()) | set(project.keys())
     origin: Dict[str, str] = {}
     for n in names:
-        if n in base and n in project:
+        in_base = n in base
+        in_vendor = n in vendor
+        in_project = n in project
+
+        if in_project and (in_base or in_vendor):
             origin[n] = 'extended'
-        elif n in base:
+        elif in_vendor:
+            origin[n] = 'vendor'
+        elif in_base:
             origin[n] = 'standard'
         else:
             origin[n] = 'custom'

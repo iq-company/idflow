@@ -1,7 +1,7 @@
 from __future__ import annotations
 import typer
 from idflow.core.workflow_manager import get_workflow_manager
-from idflow.core.discovery import required_task_names_static
+from idflow.core.resource_resolver import ResourceResolver
 
 def list_tasks(
     local: bool = typer.Option(False, "--local", help="Show only local task files"),
@@ -47,20 +47,35 @@ def list_tasks(
 
     if local or all:
         typer.echo("Local task files:")
-        tasks = workflow_manager.discover_tasks()
-        required = set(required_task_names_static())
 
-        if not tasks:
+        # Use ResourceResolver for consistent task discovery and classification
+        resolver = ResourceResolver()
+        required = set(workflow_manager.required_task_names())
+
+        # Get task names and origins using same logic as vendor list
+        lib_t, vend_t, proj_t = resolver.names_by_base("tasks", "*", name_extractor=None, item_type="dir")
+        task_names = sorted(set().union(lib_t, vend_t, proj_t))
+
+        if not task_names:
             typer.echo("  No task files found")
         else:
-            for task_file in tasks:
-                task_def = workflow_manager.load_task_definition(task_file)
-                if task_def:
-                    name = task_def.get('name', 'unknown')
-                    suffix = "" if name in required else " (inactive)"
-                    typer.echo(f"  {name}{suffix}")
-                else:
-                    typer.echo(f"  {task_file.name} (invalid)")
+            # Build rows for tabular display
+            rows = []
+            for name in task_names:
+                origin, short = resolver.classify_origin_from_sets(name, lib_t, vend_t, proj_t)
+                status = "active" if name in required else "inactive"
+                rows.append((name, status, origin))
+
+            # Calculate column widths
+            name_w = max(len(r[0]) for r in rows)
+            status_w = max(len(r[1]) for r in rows)
+            origin_w = max(len(r[2]) for r in rows)
+
+            for name, status, origin in rows:
+                status_color = "green" if status == "active" else "red"
+                # Apply color but keep original length for padding
+                styled_status = typer.style(status, fg=status_color)
+                typer.echo(f"  {name.ljust(name_w)}  {styled_status}{' ' * (status_w - len(status))}  {origin.ljust(origin_w)}")
 
         if remote or all:
             typer.echo()

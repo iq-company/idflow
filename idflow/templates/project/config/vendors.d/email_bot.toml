@@ -1,0 +1,8 @@
+# name = "example_email_bot"
+# enabled = false
+# priority = 50
+#
+# [source]
+# type = "git"
+# url = "https://github.com/example/email-bot-idflow.git"
+# ref = "v1.0.0"

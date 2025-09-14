@@ -535,17 +535,15 @@ class StageDefinitions:
                     print(f"Warning: Failed to load stage definition '{name}' from {self.stages_dir}: {e}")
             return
 
-        # 1) package stages
-        try:
-            pkg_root = Path(ir.files("idflow"))
-            pkg_stages = pkg_root / "stages"
-            _collect_from_dir(pkg_stages, is_overlay=False)
-        except Exception:
-            pass
+        # Multi-Base: lib -> vendors -> project
+        from .resource_resolver import ResourceResolver
+        rr = ResourceResolver()
+        # definierte Reihenfolge: lib, vendors, project.
+        bases: list[Path] = [b for _n, b in rr.bases()]
 
-        # 2) overlay with project stages
-        proj_stages = Path("stages")
-        _collect_from_dir(proj_stages, is_overlay=True)
+        for idx, base in enumerate(bases):
+            is_overlay = (idx > 0)
+            _collect_from_dir(base / "stages", is_overlay=is_overlay)
 
         # Build definitions from merged data
         self._definitions.clear()

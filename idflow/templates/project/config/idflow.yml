@@ -3,3 +3,4 @@ base_dir: "data"
 config_dir: "config"
 document_implementation: "fs_markdown"
 conductor_server_url: "http://localhost:8080"
+# Vendor specs are read from config/vendors.d/*.toml

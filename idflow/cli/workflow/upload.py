@@ -2,7 +2,6 @@ from __future__ import annotations
 import typer
 from typing import Optional
 from idflow.core.workflow_manager import get_workflow_manager
-from idflow.core.discovery import required_workflow_names_static
 
 
 def upload_workflows(
@@ -21,8 +20,8 @@ def upload_workflows(
         typer.echo("Uploading workflows (active only)...")
         typer.echo("Note: Tasks are automatically registered via @worker_task decorators when workers start.")
 
-        # Determine required workflows from active stages
-        required = set(required_workflow_names_static())
+        # Determine required workflows from active stages via manager (resolver-based)
+        required = set(workflow_manager.required_workflow_names())
         if not required:
             typer.echo("No active workflows required by stages. Use --workflow to upload specific workflow.")
             return

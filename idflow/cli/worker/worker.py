@@ -96,16 +96,20 @@ app = typer.Typer(help="Manages task workers")
 
 def discover_worker_files() -> List[Path]:
     """Discover worker Python files from package and project (overlay by dir)."""
-    from idflow.core.discovery import overlay_task_dirs
+    from idflow.core.resource_resolver import ResourceResolver
+    resolver = ResourceResolver()
     files: List[Path] = []
-    for task_dir in overlay_task_dirs().values():
-        for p in task_dir.rglob("*.py"):
-            if p.name != "__init__.py":
-                try:
-                    if "@worker_task" in p.read_text(encoding='utf-8'):
-                        files.append(p)
-                except Exception:
-                    continue
+
+    # Collect all task files using ResourceResolver
+    task_files = resolver.collect_flattened_files("tasks", "*.py")
+
+    for task_file in task_files:
+        if task_file.name != "__init__.py":
+            try:
+                if "@worker_task" in task_file.read_text(encoding='utf-8'):
+                    files.append(task_file)
+            except Exception:
+                continue
     return files
 
 
@@ -140,72 +144,57 @@ def load_task_function(task_file: Path, task_name: str):
 
 
 @app.command("list")
-def list_workers(prefix: bool = typer.Option(False, "--prefix", help="Use compact prefix style (std|ext|cus)")):
+def list_workers():
     """List all available task workers with status and origin classification."""
-    from idflow.core.discovery import OverlayDiscovery, required_task_names_static
+    from idflow.core.resource_resolver import ResourceResolver
+    from idflow.core.workflow_manager import WorkflowManager
 
-    # Maps of task root dirs by name for package and project
-    od = OverlayDiscovery("tasks", mode="dir")
-    pkg_dirs = od.package_items()
-    proj_dirs = od.project_items()
-    overlay_dirs = {**pkg_dirs, **proj_dirs}
+    resolver = ResourceResolver()
+    workflow_manager = WorkflowManager()
 
-    # Collect rows: (task_name, status_label, origin, origin_tag)
-    required = set(required_task_names_static())
-    rows = []
+    # Get required task names from workflow manager
+    required_tasks = workflow_manager.required_task_names()
 
-    # Iterate per top-level task dir to retain dir name for origin classification
-    for dir_name, dir_path in overlay_dirs.items():
-        try:
-            for p in dir_path.rglob("*.py"):
-                if p.name == "__init__.py":
-                    continue
+    # Use same logic as vendor list for tasks (directory-based)
+    lib_t, vend_t, proj_t = resolver.names_by_base("tasks", "*", name_extractor=None, item_type="dir")
+    task_names = sorted(set().union(lib_t, vend_t, proj_t))
+
+    # Filter to only worker tasks (containing @worker_task)
+    worker_tasks = []
+    for name in task_names:
+        # Check if this task directory contains worker files
+        task_files = resolver.collect_flattened_files("tasks", "*.py")
+        has_worker = False
+
+        for task_file in task_files:
+            # Check if this file belongs to this task (by directory name)
+            if name in str(task_file.parent):
                 try:
-                    content = p.read_text(encoding='utf-8')
+                    if "@worker_task" in task_file.read_text(encoding='utf-8'):
+                        has_worker = True
+                        break
                 except Exception:
                     continue
-                if "@worker_task" not in content:
-                    continue
-                task_name = extract_task_name_from_file(p) or p.stem
-                status_label = "active" if task_name in required else "unused"
-                in_pkg = dir_name in pkg_dirs
-                in_proj = dir_name in proj_dirs
-                if in_pkg and in_proj:
-                    origin, origin_tag = "extended", "ext"
-                elif in_pkg:
-                    origin, origin_tag = "standard", "std"
-                else:
-                    origin, origin_tag = "custom", "cus"
-                rows.append((task_name, status_label, origin, origin_tag))
-        except Exception:
-            continue
 
-    if not rows:
+        if has_worker:
+            origin, short = resolver.classify_origin_from_sets(name, lib_t, vend_t, proj_t)
+            status = "active" if name in required_tasks else "unused"
+
+            worker_tasks.append({
+                "name": name,
+                "status": status,
+                "origin": origin,
+                "short": short
+            })
+
+    # Display in table format
+    if not worker_tasks:
         typer.echo("No worker files found")
         return
 
-    # Deduplicate by task_name keeping first occurrence (project overrides)
-    seen = set()
-    unique_rows = []
-    for r in rows:
-        if r[0] in seen:
-            continue
-        seen.add(r[0])
-        unique_rows.append(r)
-
-    unique_rows.sort(key=lambda x: x[0])
-
-    if prefix:
-        for name, status_label, _origin, origin_tag in unique_rows:
-            typer.echo(f"({origin_tag}) {name} [{status_label}]")
-        return
-
-    name_w = max(len(r[0]) for r in unique_rows)
-    status_w = max(len(r[1]) for r in unique_rows)
-    origin_w = max(len(r[2]) for r in unique_rows)
-
-    for name, status_label, origin, _tag in unique_rows:
-        typer.echo(f"{name.ljust(name_w)}  {status_label.ljust(status_w)}  {origin.ljust(origin_w)}")
+    for worker in worker_tasks:
+        status_color = "green" if worker["status"] == "active" else "red"
+        typer.echo(f"{worker['name']:<30} {typer.style(worker['status'], fg=status_color):<7} {worker['origin']}")
 
 
 @app.command("ps")

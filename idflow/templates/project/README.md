@@ -35,6 +35,44 @@ idflow doc list
 ## Configuration
 - `config/idflow.yml` sets base directories, ORM implementation and Conductor URL
 - Project-defined extras live in `config/extras.d/`
+- Vendor specs live in `config/vendors.d/` (see example `config/vendors.d/email_bot.toml`)
+
+### Vendors
+
+Vendor packages (git or path) can be configured via TOML in `config/vendors.d/`.
+After adding a spec, fetch or update vendor sources via:
+
+```bash
+idflow vendor fetch
+```
+
+Checked-out vendors are placed in `.idflow/vendors/<name>` (git) or symlinked (path).
+Resources are overlaid in this precedence: `lib -> vendors -> project`.
+
+Example specs:
+
+```toml
+# config/vendors.d/email_bot.toml
+name = "email_bot"
+enabled = true
+priority = 50
+
+[source]
+type = "git"
+url = "https://github.com/org/email-bot-idflow.git"
+ref = "v1.4.3"  # tag, branch or commit
+```
+
+```toml
+# config/vendors.d/local_tools.toml
+name = "local_tools"
+enabled = true
+priority = 60
+
+[source]
+type = "path"
+path = "/absolute/path/to/another/idflow-project"  # can also be relative to project root
+```
 
 ## Data layout
 - `data/inbox`, `data/active`, `data/done` are created by the template

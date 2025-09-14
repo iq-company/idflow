@@ -174,12 +174,33 @@ def purge_extras():
 
     # We cannot reliably uninstall extras as a group; suggest uninstalling their dists,
     # but exclude any distribution that is still required by protected sets.
+    # However, if a package is ONLY used by extraneous extras, it should be uninstallable.
+
+    # Find packages that are only used by extraneous extras
+    extraneous_packages = set()
+    required_packages = set()
+
+    # Collect packages from extraneous extras
+    for f in extraneous:
+        for req in available_map.get(f, []):
+            extraneous_packages.add(_extract_name(req))
+
+    # Collect packages from required extras
+    for f in required:
+        for req in available_map.get(f, []):
+            required_packages.add(_extract_name(req))
+
     dists = set()
     for f in extraneous:
         for req in available_map.get(f, []):
             name = _extract_name(req)
-            if name not in protected_dists:
+            # Allow uninstall if package is only used by extraneous extras
+            if name not in required_packages and name not in protected_dists:
                 dists.add(name)
+            elif name in extraneous_packages and name not in required_packages:
+                # Package is only in extraneous extras, allow uninstall even if "protected"
+                dists.add(name)
+
     if not dists:
         typer.echo("No uninstallable distributions found for extraneous extras")
         return
