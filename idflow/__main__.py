@@ -5,6 +5,16 @@ import typer
 
 app = typer.Typer(add_completion=False)
 
+# Import common help utilities
+from idflow.cli.common import add_help_option
+
+@app.callback()
+def main(
+    help: bool = add_help_option()
+):
+    """idflow CLI - Workflow management tool"""
+    pass
+
 # Import the CLI doc commands
 from idflow.cli.doc import app as doc_app
 app.add_typer(doc_app, name="doc")

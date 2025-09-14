@@ -4,9 +4,9 @@ from idflow.core.workflow_manager import get_workflow_manager
 
 
 def list_workflows(
-    local: bool = typer.Option(False, "--local", help="Show only local workflow files (Default)"),
-    all: bool = typer.Option(False, "--all", help="Show both local and remote workflows"),
-    remote: bool = typer.Option(False, "--remote", help="Show only workflows that exist remote but not locally"),
+    local: bool = typer.Option(False, "--local", "-l", help="Show only local workflow files (Default)"),
+    all: bool = typer.Option(False, "--all", "-a", help="Show both local and remote workflows"),
+    remote: bool = typer.Option(False, "--remote", "-r", help="Show only workflows that exist remote but not locally"),
     versions: bool = typer.Option(True, "--versions/--no-versions", help="Show version information for workflows")
 ):
     """List workflows (local files and/or remote)."""

@@ -93,6 +93,16 @@ def determine_process_type(current_pid: int, ppid: int, memory_usage: float) -> 
 
 app = typer.Typer(help="Manages task workers")
 
+# Import common help utilities
+from ..common import add_help_option
+
+@app.callback()
+def worker_main(
+    help: bool = add_help_option()
+):
+    """Manages task workers"""
+    pass
+
 
 def discover_worker_files() -> List[Path]:
     """Discover worker Python files from package and project (overlay by dir)."""

@@ -1,13 +1,22 @@
 import typer
 from .copy import copy_vendor
 from .list import list_vendor
+from ..common import add_help_option
 
 from pathlib import Path
 from idflow.core.vendor_registry import VendorRegistry, _find_project_root
 
 app = typer.Typer(add_completion=False, help="Copy vendor delivered stages, workflows, tasks into project for custom extension.")
+
+@app.callback()
+def vendor_main(
+    help: bool = add_help_option()
+):
+    """Copy vendor delivered stages, workflows, tasks into project for custom extension."""
+    pass
 app.command("copy")(copy_vendor)
 app.command("list")(list_vendor)
+app.command("ls")(list_vendor)  # Alias für list
 
 
 @app.command("fetch")

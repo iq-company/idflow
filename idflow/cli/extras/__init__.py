@@ -12,6 +12,16 @@ from idflow.core.stage_definitions import get_stage_definitions
 
 app = typer.Typer(help="Manage extras (optional dependencies)")
 
+# Import common help utilities
+from ..common import add_help_option
+
+@app.callback()
+def extras_main(
+    help: bool = add_help_option()
+):
+    """Manage extras (optional dependencies)"""
+    pass
+
 
 def _gather_required_features_with_stages() -> dict[str, list[str]]:
     """Return mapping feature -> list of stage names that require it (only active stages)."""

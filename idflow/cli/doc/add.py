@@ -26,7 +26,7 @@ def _read_body_param_or_stdin(arg_text: Optional[str]) -> str:
 
 def add(
     body_arg: Optional[str] = typer.Argument(None, help="Body text (optional, otherwise stdin)"),
-    status: str = typer.Option("inbox", "--status", help="inbox|active|done|blocked|archived"),
+    status: str = typer.Option("inbox", "--status", "-s", help="inbox|active|done|blocked|archived"),
     set_: List[str] = typer.Option(None, "--set", help="property=value (dot paths allowed)"),
     list_add: List[str] = typer.Option(None, "--list-add", help="property=value to append to list"),
     json_kv: List[str] = typer.Option(None, "--json", help="property=<JSON> (dict/list/value)"),

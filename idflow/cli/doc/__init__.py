@@ -7,10 +7,19 @@ from .drop import drop
 from .drop_all import drop_all
 from .locate import locate
 from .show import show
+from ..common import add_help_option
 
 app = typer.Typer(help="Manages docs/ids for being inserted into or consumed from Pipelines", add_completion=False)
+
+@app.callback()
+def doc_main(
+    help: bool = add_help_option()
+):
+    """Manages docs/ids for being inserted into or consumed from Pipelines"""
+    pass
 app.command("add")(add)
 app.command("list")(list_docs)
+app.command("ls")(list_docs)  # Alias für list
 app.command("modify")(modify)
 app.command("set-status")(set_status)
 app.command("drop")(drop)
