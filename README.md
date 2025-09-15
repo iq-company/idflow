@@ -79,6 +79,7 @@ idflow init demo-project # creates empty project in sub folder demo/
 - **[Task Management](docs/TASK_MANAGEMENT.md)** - Task development and management
 
 ### Features & Extensions
+- **[Vendor System](docs/VENDOR_SYSTEM.md)** - Modular extensions and external package integration
 - **[Research Features](docs/README_RESEARCH_FEATURES.md)** - Web scraping and AI research
 - **[Worker Framework](docs/WORKER_FRAMEWORK_DOCUMENTATION.md)** - Conductor worker management
 - **[Development](docs/README_dev.md)** - Setup and guidelines for developers
