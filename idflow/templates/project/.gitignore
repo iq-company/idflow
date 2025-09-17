@@ -10,9 +10,6 @@ __VENV_NAME__/
 venv/
 ENV/
 
-# Data (generated)
-data/
-
 # idflow workspace (vendors checkout/symlinks)
 .idflow/
 
