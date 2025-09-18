@@ -101,13 +101,13 @@ idflow init demo-project # creates empty project in sub folder demo/
 
 ## 🎯 Use Cases
 
-| Use Case | Description | Status |
-|----------|-------------|--------|
-| **Content Marketing** | From social trends to own content pieces | ✅ |
-| **Visitor Profiling** | Collect and enrich visitor data | ✅ |
-| **Email Management** | Organize emails without privacy concerns | ✅ |
-| **Media Analysis** | Analyze and evaluate podcasts, videos | ✅ |
-| **Document Processing** | Process PDFs, images with OCR/MLLM | ✅ |
+| Use Case | Description |
+|----------|-------------|
+| **Content Marketing** | From social trends to own content pieces |
+| **Visitor Profiling** | Collect and enrich visitor data |
+| **Email Management** | Organize emails without privacy concerns |
+| **Media Analysis** | Analyze and evaluate podcasts, videos |
+| **Document Processing** | Process PDFs, images with OCR/MLLM |
 
 ## 🔧 Configuration
 
@@ -117,29 +117,6 @@ base_dir: "data"
 config_dir: "config"
 document_implementation: "fs_markdown"  # or "database"
 conductor_server_url: "http://localhost:8080"
-```
-
-## 🚀 Latest Features
-
-### Task Management (New!)
-```bash
-# List and synchronize tasks
-idflow tasks list --sync
-
-# Upload tasks
-idflow tasks upload --all
-
-# Clean up orphaned tasks
-idflow tasks purge --orphaned
-```
-
-### Workflow Management
-```bash
-# List workflows
-idflow workflow list --conductor
-
-# Upload workflows
-idflow workflow upload --all
 ```
 
 ## 🤝 Contribute
